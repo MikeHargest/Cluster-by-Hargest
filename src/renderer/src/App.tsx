@@ -33,7 +33,8 @@ import {
   History,
   Save,
   Check,
-  Layers
+  Layers,
+  HardDrive
 } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
 import TimerCard from './components/TimerCard'
@@ -50,6 +51,7 @@ import NotificationCenter from './components/NotificationCenter'
 import GlobalSearchModal from './components/GlobalSearchModal'
 import GlobalTasksView from './components/GlobalTasksView'
 import AlarmCard from './components/AlarmCard'
+import FilesView from './components/FilesView'
 import { Bell } from 'lucide-react'
 
 import {
@@ -161,7 +163,7 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [currentView, setCurrentView] = useState<
-    'overview' | 'clock' | 'timeline' | 'notes' | 'pipeline' | 'tasks'
+    'overview' | 'clock' | 'timeline' | 'notes' | 'pipeline' | 'tasks' | 'files'
   >('overview')
   const [showSettings, setShowSettings] = useState(false)
   const [showFPS, setShowFPS] = useState(false)
@@ -243,7 +245,7 @@ function App() {
   }, [isAlwaysOnTop])
 
   // Tab system
-  const [tabs, setTabs] = useState<{ id: string, view: 'overview' | 'clock' | 'timeline' | 'notes' | 'pipeline' | 'tasks', selectedProjectId: string | null, activeNoteId: string | null, label: string }[]>([
+  const [tabs, setTabs] = useState<{ id: string, view: 'overview' | 'clock' | 'timeline' | 'notes' | 'pipeline' | 'tasks' | 'files', selectedProjectId: string | null, activeNoteId: string | null, label: string }[]>([
     { id: 'initial-tab', view: 'overview', selectedProjectId: null, activeNoteId: null, label: 'Overview' }
   ])
   const [activeTabId, setActiveTabId] = useState('initial-tab')
@@ -1717,6 +1719,7 @@ function App() {
                   { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
                   { id: 'pipeline', icon: GitBranch, label: 'Pipeline' },
                   { id: 'notes', icon: FileTextIcon, label: 'Notes' },
+                  { id: 'files', icon: HardDrive, label: 'Files' },
                   { id: 'separator', icon: null, label: 'separator' },
                   { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
                   { id: 'timeline', icon: CalendarIcon, label: 'Calendar' },
@@ -2285,6 +2288,16 @@ function App() {
                 notesToolbarActionsRef={notesToolbarActionsRef}
               />
             </div>
+            {currentView === 'files' && (
+              <FilesView
+                workspacePath={workspacePath || ''}
+                allProjects={allProjects}
+                onNavigateToProject={(id) => {
+                  setSelectedProjectId(id)
+                  setCurrentView('overview')
+                }}
+              />
+            )}
             <div style={{ display: currentView === 'tasks' ? 'contents' : 'none' }}>
               <GlobalTasksView
                 projects={projects}

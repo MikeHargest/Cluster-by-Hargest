@@ -45,6 +45,30 @@ import ImageExt from '@tiptap/extension-image'
 import { Virtuoso } from 'react-virtuoso'
 import { motion, AnimatePresence } from 'framer-motion'
 
+import Paragraph from '@tiptap/extension-paragraph'
+
+const CustomParagraph = Paragraph.extend({
+  addStorage() {
+    return {
+      markdown: {
+        serialize(state: any, node: any) {
+          if (node.childCount === 0) {
+            state.write('&#8203;')
+            state.closeBlock(node)
+          } else {
+            state.renderInline(node)
+            state.closeBlock(node)
+          }
+        },
+        parse: {
+          // Handled by markdown-it natively
+        }
+      }
+    }
+  }
+})
+
+
 import { AppNote, Project } from '../types'
 import ColorPicker from './ColorPicker'
 import BoardsView from './boards/BoardsView'
@@ -948,8 +972,10 @@ export default function NotesView({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        heading: { levels: [1, 2, 3] }
+        heading: { levels: [1, 2, 3] },
+        paragraph: false
       }),
+      CustomParagraph,
       UnderlineExt,
       TextStyle,
       Color,
@@ -1046,7 +1072,7 @@ export default function NotesView({
             setShowBubbleMenu(true)
           }
         }
-      }, 50)
+      }, 10)
     }
 
     editor.view.dom.addEventListener('mousedown', handleMouseDown)
@@ -3355,13 +3381,16 @@ export default function NotesView({
                           <BubbleMenu
                             editor={editor}
                             shouldShow={({ editor: bubbleEditor }) => {
-                              if (!bubbleEditor?.isEditable || !showBubbleMenu) return false
+                              if (!bubbleEditor?.isEditable) return false
                               const { from, to } = bubbleEditor.state.selection
                               return from !== to
                             }}
                           >
                             <div
                               style={{
+                                opacity: showBubbleMenu ? 1 : 0,
+                                pointerEvents: showBubbleMenu ? 'auto' : 'none',
+                                transition: 'opacity 0.15s ease-out',
                                 background: 'rgba(18,18,18,0.92)',
                                 border: '1px solid rgba(255,255,255,0.1)',
                                 borderRadius: '12px',

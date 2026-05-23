@@ -189,3 +189,13 @@ export const DEFAULT_THEME: UITheme = {
   calendarEventBg: 'rgba(255,255,255,0.03)',
   timerBg: '#171717'
 }
+
+export interface AppFile {
+  id: string
+  name: string
+  path: string
+  size: number
+  lastModified: number
+  extension: string
+  source: string
+}

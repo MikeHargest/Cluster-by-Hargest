@@ -584,6 +584,76 @@ ipcMain.handle('workspace:scanAllNotes', async (_, workspacePath: string) => {
   }
 })
 
+ipcMain.handle('workspace:scanAllFiles', async (_, workspacePath: string) => {
+  try {
+    if (!fs.existsSync(workspacePath)) return []
+    const allFiles: any[] = []
+
+    const scanDir = (dir: string, projectName: string) => {
+      if (!fs.existsSync(dir)) return
+      const files = fs.readdirSync(dir)
+      for (const f of files) {
+        const fullPath = join(dir, f)
+        try {
+          const stats = fs.statSync(fullPath)
+          if (stats.isDirectory()) {
+            if (f !== '.backups' && f !== '.trash' && f !== '.git' && f !== 'node_modules') {
+              scanDir(fullPath, projectName)
+            }
+          } else {
+            allFiles.push({
+              id: fullPath,
+              name: f,
+              path: fullPath,
+              size: stats.size,
+              lastModified: stats.mtimeMs,
+              extension: path.extname(f).toLowerCase() || 'none',
+              source: projectName
+            })
+          }
+        } catch (e) {
+          console.error('Error scanning file:', fullPath, e)
+        }
+      }
+    }
+
+    const rootDirs = ['notes', 'boards', 'attachments', 'overview']
+    for (const d of rootDirs) {
+      scanDir(join(workspacePath, d), 'Workspace Root')
+    }
+
+    const projects = fs.readdirSync(workspacePath).filter((f: string) => {
+      const fullPath = join(workspacePath, f)
+      try {
+        return fs.statSync(fullPath).isDirectory() && f !== '.workspace' && !rootDirs.includes(f)
+      } catch {
+        return false
+      }
+    })
+
+    for (const p of projects) {
+      for (const d of rootDirs) {
+        scanDir(join(workspacePath, p, d), p)
+      }
+      // Also check if there are files directly in the project root
+      // that might be considered attachments (optional, but requested directories are enough).
+    }
+
+    return allFiles
+  } catch (error) {
+    console.error('Failed to scan workspace files:', error)
+    return []
+  }
+})
+
+ipcMain.handle('app:showItemInFolder', async (_, filePath: string) => {
+  if (!filePath) return
+  const normalizedPath = path.normalize(filePath)
+  if (fs.existsSync(normalizedPath)) {
+    shell.showItemInFolder(normalizedPath)
+  }
+})
+
 ipcMain.handle('app:openExternal', async (_, url: string) => {
   await shell.openExternal(url)
 })

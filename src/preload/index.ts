@@ -153,6 +153,10 @@ const api = {
     ipcRenderer.invoke('workspace:listProjects', workspacePath),
   scanAllNotes: (workspacePath: string) =>
     ipcRenderer.invoke('workspace:scanAllNotes', workspacePath),
+  scanAllFiles: (workspacePath: string) =>
+    ipcRenderer.invoke('workspace:scanAllFiles', workspacePath),
+  showItemInFolder: (path: string) =>
+    ipcRenderer.invoke('app:showItemInFolder', path),
   getFolderSize: (folderPath: string) => ipcRenderer.invoke('workspace:getFolderSize', folderPath),
 
   // Overview Description
