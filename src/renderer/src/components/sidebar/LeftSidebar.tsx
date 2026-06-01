@@ -43,27 +43,6 @@ interface LeftSidebarProps {
   showColoredDots: boolean
 }
 
-const isEventInPast = (event: AppEvent): boolean => {
-  if (!event.date) return false
-
-  const today = new Date()
-  const year = today.getFullYear()
-  const month = String(today.getMonth() + 1).padStart(2, '0')
-  const day = String(today.getDate()).padStart(2, '0')
-  const todayStr = `${year}-${month}-${day}`
-
-  if (event.date < todayStr) return true
-  if (event.date > todayStr) return false
-
-  // event.date === todayStr
-  if (!event.time) return false // No time set, assume today's event is active/upcoming
-
-  const hours = String(today.getHours()).padStart(2, '0')
-  const minutes = String(today.getMinutes()).padStart(2, '0')
-  const timeStr = `${hours}:${minutes}`
-
-  return event.time < timeStr
-}
 
 const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) => {
   const {
@@ -89,7 +68,6 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
     anchorRect: DOMRect
   } | null>(null)
   const [isArchiveView, setIsArchiveView] = useState(false)
-  const [isEventsArchiveView, setIsEventsArchiveView] = useState(false)
 
   // Section expansion states
   const [isProjectsExpanded, setIsProjectsExpanded] = useState(true)
