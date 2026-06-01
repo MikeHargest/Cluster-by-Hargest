@@ -51,7 +51,7 @@ import NotificationCenter from './components/NotificationCenter'
 import GlobalSearchModal from './components/GlobalSearchModal'
 import GlobalTasksView from './components/GlobalTasksView'
 import AlarmCard from './components/AlarmCard'
-import FilesView from './components/FilesView'
+import DiskPanel from './components/DiskPanel'
 import { Bell } from 'lucide-react'
 
 import {
@@ -163,7 +163,7 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [currentView, setCurrentView] = useState<
-    'overview' | 'clock' | 'timeline' | 'notes' | 'pipeline' | 'tasks' | 'files'
+    'overview' | 'clock' | 'timeline' | 'notes' | 'pipeline' | 'tasks'
   >('overview')
   const [showSettings, setShowSettings] = useState(false)
   const [showFPS, setShowFPS] = useState(false)
@@ -183,6 +183,9 @@ function App() {
   const [timerVolume, setTimerVolume] = useState<number>(0.5)
   const [previousWorkspacePath, setPreviousWorkspacePath] = useState<string | null>(null)
   const [hiddenTimelineProjectIds, setHiddenTimelineProjectIds] = useState<string[]>([])
+
+  // Disk panel states
+  const [showDiskPanel, setShowDiskPanel] = useState(false)
   const [backupIntervalMinutes, setBackupIntervalMinutes] = useState(10)
   const [boardAutosaveIntervalMinutes, setBoardAutosaveIntervalMinutes] = useState(5)
   const [boardBackupIntervalMinutes, setBoardBackupIntervalMinutes] = useState(10)
@@ -219,8 +222,8 @@ function App() {
   const calendarFilterMenuRef = useRef<HTMLDivElement>(null)
 
   const CALENDAR_MODES = {
-    timeline: { label: 'Timeline View', icon: AlignLeft },
     month: { label: 'Month View', icon: CalendarDays },
+    timeline: { label: 'Timeline View', icon: AlignLeft },
     week: { label: 'Week View', icon: CalendarRange },
     day: { label: 'Day View', icon: CalendarIcon }
   }
@@ -231,7 +234,7 @@ function App() {
   const bannerMenuRef = useRef<HTMLDivElement>(null)
 
   // Calendar states
-  const [calendarViewMode, setCalendarViewMode] = useState<'timeline' | 'month' | 'week' | 'day'>('timeline')
+  const [calendarViewMode, setCalendarViewMode] = useState<'timeline' | 'month' | 'week' | 'day'>('month')
   const [calendarViewDate, setCalendarViewDate] = useState(new Date())
   const calendarRef = useRef<{ scrollToToday: () => void } | null>(null)
 
@@ -245,7 +248,7 @@ function App() {
   }, [isAlwaysOnTop])
 
   // Tab system
-  const [tabs, setTabs] = useState<{ id: string, view: 'overview' | 'clock' | 'timeline' | 'notes' | 'pipeline' | 'tasks' | 'files', selectedProjectId: string | null, activeNoteId: string | null, label: string }[]>([
+  const [tabs, setTabs] = useState<{ id: string, view: 'overview' | 'clock' | 'timeline' | 'notes' | 'pipeline' | 'tasks', selectedProjectId: string | null, activeNoteId: string | null, label: string }[]>([
     { id: 'initial-tab', view: 'overview', selectedProjectId: null, activeNoteId: null, label: 'Overview' }
   ])
   const [activeTabId, setActiveTabId] = useState('initial-tab')
@@ -665,7 +668,7 @@ function App() {
         const lastProj = await api.getStoreValue('last-project-id')
         const lastNote = await api.getStoreValue('last-note-id')
 
-        if (lastView) setCurrentView(lastView)
+        if (lastView) setCurrentView(lastView === 'clock' ? 'overview' : lastView)
         if (lastProj) setSelectedProjectId(lastProj)
         if (lastNote) setActiveNoteId(lastNote)
 
@@ -1356,6 +1359,19 @@ function App() {
     setTimelineTasks((prev) => prev.filter((t) => t.taskId !== taskId))
   }
 
+  const handleClearArchive = () => {
+    if (!window.confirm('Are you sure you want to permanently delete all archived tasks across all projects?')) return
+    pushToHistory()
+    const updateRecursive = (projs: Project[]): Project[] => {
+      return projs.map((p) => ({
+        ...p,
+        archivedTasks: [],
+        subprojects: p.subprojects ? updateRecursive(p.subprojects) : []
+      }))
+    }
+    setProjects((prev) => updateRecursive(prev))
+  }
+
   const handleWorkspaceSelected = useCallback(
     (path: string): void => {
       // Clear current data to avoid leakage before loading new workspace
@@ -1577,6 +1593,19 @@ function App() {
             </span>
           </button>
 
+          {/* Disk Panel Toggle */}
+          <button
+            className="header-icon-btn"
+            onClick={() => setShowDiskPanel(true)}
+            title="Disk"
+            style={{
+              color: 'var(--text-secondary)',
+              marginLeft: '4px'
+            }}
+          >
+            <HardDrive size={16} />
+          </button>
+
           {/* Bell (Notifications) */}
           <div ref={notificationRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', marginLeft: '4px' }}>
             <button
@@ -1719,7 +1748,6 @@ function App() {
                   { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
                   { id: 'pipeline', icon: GitBranch, label: 'Pipeline' },
                   { id: 'notes', icon: FileTextIcon, label: 'Notes' },
-                  { id: 'files', icon: HardDrive, label: 'Files' },
                   { id: 'separator', icon: null, label: 'separator' },
                   { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
                   { id: 'timeline', icon: CalendarIcon, label: 'Calendar' },
@@ -1739,6 +1767,8 @@ function App() {
                   )
                 ))}
               </div>
+
+
             </div>
 
             {/* Right Toolbar: Part of the merged L-shape */}
@@ -1842,7 +1872,6 @@ function App() {
                   </button>
                 </div>
               )}
-
               {currentView === 'tasks' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <button
@@ -2288,22 +2317,13 @@ function App() {
                 notesToolbarActionsRef={notesToolbarActionsRef}
               />
             </div>
-            {currentView === 'files' && (
-              <FilesView
-                workspacePath={workspacePath || ''}
-                allProjects={allProjects}
-                onNavigateToProject={(id) => {
-                  setSelectedProjectId(id)
-                  setCurrentView('overview')
-                }}
-              />
-            )}
             <div style={{ display: currentView === 'tasks' ? 'contents' : 'none' }}>
               <GlobalTasksView
                 projects={projects}
                 onUpdateTask={onUpdateTask}
                 onTaskAdded={onAddProjectItem}
                 onTaskDeleted={onDeleteTask}
+                onClearArchive={handleClearArchive}
                 showTaskCounts={showTaskCounts}
                 hideEmptyProjects={hideEmptyProjects}
               />
@@ -2438,6 +2458,18 @@ function App() {
           }}
         />
       )}
+
+      <DiskPanel
+        isOpen={showDiskPanel}
+        onClose={() => setShowDiskPanel(false)}
+        workspacePath={workspacePath || ''}
+        allProjects={allProjects}
+        onNavigateToProject={(id) => {
+          setSelectedProjectId(id)
+          setCurrentView('overview')
+          setShowDiskPanel(false)
+        }}
+      />
     </div>
   )
 }

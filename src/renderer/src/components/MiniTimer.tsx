@@ -21,8 +21,10 @@ export default function MiniTimer({ timerId }: { timerId: string }): React.React
         setState(newState)
       }
     })
+    
     return cleanup
   }, [timerId])
+
 
   if (!state) {
     return <div className="mini-timer-loading">Loading...</div>

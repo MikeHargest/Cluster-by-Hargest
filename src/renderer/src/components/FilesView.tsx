@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
-  Search,
   FolderOpen,
   FileText,
   Image,
@@ -13,25 +12,37 @@ import {
   File,
   ChevronUp,
   ChevronDown,
-  RefreshCcw,
   ExternalLink,
   FolderSearch,
   LayoutGrid,
-  List,
   X,
   Folder
 } from 'lucide-react'
 import { AppFile } from '../types'
 
+export interface FilesViewHandle {
+  loadFiles: () => Promise<void>
+}
+
 interface FilesViewProps {
   workspacePath: string
   allProjects: { id: string; name: string; path?: string }[]
-  onNavigateToProject?: (projectId: string) => void // kept for future use
+  onNavigateToProject?: (projectId: string) => void
+  
+  searchQuery: string
+  categoryFilter: string
+  setCategoryFilter: (c: string) => void
+  selectedSource: string
+  viewMode: 'list' | 'grid'
+  
+  setIsLoadingParent: (loading: boolean) => void
+  setSourcesParent: (sources: string[]) => void
+  
+  filesRef?: React.MutableRefObject<FilesViewHandle | null>
 }
 
 type SortKey = 'name' | 'source' | 'lastModified' | 'size' | 'extension'
 type SortDir = 'asc' | 'desc'
-type ViewMode = 'list' | 'grid'
 
 const EXT_CATEGORIES: Record<string, string[]> = {
   image: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'avif'],
@@ -90,7 +101,7 @@ function getSourceLabel(source: string, allProjects: { id: string; name: string 
   return proj?.name || source
 }
 
-const CATEGORY_FILTER_OPTIONS = [
+export const CATEGORY_FILTER_OPTIONS = [
   { value: 'all', label: 'All files' },
   { value: 'image', label: 'Images' },
   { value: 'video', label: 'Video' },
@@ -104,15 +115,23 @@ const CATEGORY_FILTER_OPTIONS = [
   { value: 'other', label: 'Other' },
 ]
 
-export default function FilesView({ workspacePath, allProjects, onNavigateToProject: _onNavigateToProject }: FilesViewProps) {
+export default function FilesView({
+  workspacePath,
+  allProjects,
+  onNavigateToProject: _onNavigateToProject,
+  searchQuery,
+  categoryFilter,
+  setCategoryFilter,
+  selectedSource,
+  viewMode,
+  setIsLoadingParent,
+  setSourcesParent,
+  filesRef
+}: FilesViewProps) {
   const [files, setFiles] = useState<AppFile[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('lastModified')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [selectedSource, setSelectedSource] = useState('all')
   const [activeFile, setActiveFile] = useState<AppFile | null>(null)
   const [showFilterPanel, setShowFilterPanel] = useState(false)
   const [openError, setOpenError] = useState<string | null>(null)
@@ -136,6 +155,23 @@ export default function FilesView({ workspacePath, allProjects, onNavigateToProj
     loadFiles()
   }, [loadFiles])
 
+  // Notify parent of loading state changes
+  useEffect(() => {
+    setIsLoadingParent(isLoading)
+  }, [isLoading, setIsLoadingParent])
+
+  // Setup imperative handle ref for parent
+  useEffect(() => {
+    if (filesRef) {
+      filesRef.current = {
+        loadFiles
+      }
+    }
+    return () => {
+      if (filesRef) filesRef.current = null
+    }
+  }, [filesRef, loadFiles])
+
   // Close filter panel on outside click
   useEffect(() => {
     if (!showFilterPanel) return
@@ -154,6 +190,11 @@ export default function FilesView({ workspacePath, allProjects, onNavigateToProj
     files.forEach(f => s.add(f.source))
     return Array.from(s).sort()
   }, [files])
+
+  // Notify parent of source dropdown options
+  useEffect(() => {
+    setSourcesParent(sources)
+  }, [sources, setSourcesParent])
 
   // Filtered + sorted files
   const displayFiles = useMemo(() => {
@@ -224,7 +265,7 @@ export default function FilesView({ workspacePath, allProjects, onNavigateToProj
           flex-direction: column;
           flex: 1;
           min-height: 0;
-          background: var(--bg-color, #1b1b1b);
+          background: var(--card-bg, #121212);
           color: var(--text-primary, #eaeaea);
           font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
           user-select: none;
@@ -384,7 +425,7 @@ export default function FilesView({ workspacePath, allProjects, onNavigateToProj
           position: sticky;
           top: 0;
           z-index: 2;
-          background: var(--bg-color, #1b1b1b);
+          background: var(--card-bg, #121212);
         }
         .fv-table thead th {
           text-align: left;
@@ -623,62 +664,6 @@ export default function FilesView({ workspacePath, allProjects, onNavigateToProj
         }
         .fv-error-dismiss:hover { color: #fff; }
       `}</style>
-
-      {/* Toolbar */}
-      <div className="fv-toolbar">
-        <div className="fv-search-wrap">
-          <Search size={14} style={{ color: 'rgba(255,255,255,0.3)', flexShrink: 0 }} />
-          <input
-            type="text"
-            placeholder="Search files..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-          />
-          {searchQuery && (
-            <button className="fv-search-clear" onClick={() => setSearchQuery('')}>
-              <X size={12} />
-            </button>
-          )}
-        </div>
-
-        {/* Source selector */}
-        <select
-          className="fv-source-select"
-          value={selectedSource}
-          onChange={e => setSelectedSource(e.target.value)}
-          title="Filter by project"
-        >
-          <option value="all">All sources</option>
-          {sources.map(s => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-          <button
-            className={`fv-icon-btn ${viewMode === 'list' ? 'active' : ''}`}
-            onClick={() => setViewMode('list')}
-            title="List view"
-          >
-            <List size={15} />
-          </button>
-          <button
-            className={`fv-icon-btn ${viewMode === 'grid' ? 'active' : ''}`}
-            onClick={() => setViewMode('grid')}
-            title="Grid view"
-          >
-            <LayoutGrid size={15} />
-          </button>
-          <button
-            className="fv-icon-btn"
-            onClick={loadFiles}
-            title="Refresh"
-            disabled={isLoading}
-          >
-            <RefreshCcw size={15} style={isLoading ? { opacity: 0.4 } : undefined} />
-          </button>
-        </div>
-      </div>
 
       {/* Category filters */}
       <div className="fv-filter-row">

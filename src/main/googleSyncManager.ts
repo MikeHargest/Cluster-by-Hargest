@@ -114,19 +114,32 @@ export class GoogleSyncManager {
         return localEvents
       }
       
-      const matchingCalendar = calendars.find(c => {
+      let matchingCalendar = calendars.find(c => {
         const calName = (c.summary || '').toLowerCase().trim()
         const projName = projectName.toLowerCase().trim()
         return calName === projName
       })
 
-      if (!matchingCalendar) {
-        console.log(`[Sync] No matching calendar found for project "${projectName}". Skipped.`)
-        return localEvents
-      }
+      let calendarId = ''
 
-      const calendarId = matchingCalendar.id!
-      console.log(`[Sync] Match found! Project "${projectName}" -> Calendar "${matchingCalendar.summary}" (${calendarId})`)
+      if (!matchingCalendar) {
+        console.log(`[Sync] No matching calendar found for project "${projectName}". Creating a new calendar...`)
+        try {
+          const createRes = await this.calendar.calendars.insert({
+            requestBody: {
+              summary: projectName
+            }
+          })
+          calendarId = createRes.data.id!
+          console.log(`[Sync] Created new Google Calendar for project "${projectName}" with ID: ${calendarId}`)
+        } catch (createErr) {
+          console.error(`[Sync] Failed to create calendar for project "${projectName}":`, createErr)
+          return localEvents
+        }
+      } else {
+        calendarId = matchingCalendar.id!
+        console.log(`[Sync] Match found! Project "${projectName}" -> Calendar "${matchingCalendar.summary}" (${calendarId})`)
+      }
 
       // 0. MARK UNTRACKED LOCAL EVENTS AS PENDING_PUSH
       // Events created before sync was added don't have syncStatus — mark them for upload
@@ -237,7 +250,7 @@ export class GoogleSyncManager {
          const cType = gRule.extendedProperties?.private?.clusterType
          if (cType && gRule.extendedProperties?.private?.projectId !== projectId && cType !== 'project') {
              // Belongs to another project in cluster - ignore.
-             // Wait, our mapper didn't inject projectId. Let's assume we import all raw Google Events into our current active workspace context!
+             continue
          }
 
          const externalId = gRule.id!

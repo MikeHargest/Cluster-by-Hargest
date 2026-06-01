@@ -355,7 +355,8 @@ const CalendarView = forwardRef<
     const traverse = (projs: Project[]) => {
       for (const p of projs) {
         if (p.events) {
-          const expanded = expandRecurringEvents(p.events, startDate, endDate)
+          const activeEvents = p.events.filter(e => e.syncStatus !== 'pending_delete')
+          const expanded = expandRecurringEvents(activeEvents, startDate, endDate)
           list.push(
             ...expanded
               .map((e) => ({ ...e, projectId: p.id, projectColor: p.color }))
@@ -570,7 +571,16 @@ const CalendarView = forwardRef<
     } else {
       const updateProjectsRecursive = (projs: Project[]): Project[] => {
         return projs.map(p => {
-          if (p.id === projectId) return { ...p, events: (p.events || []).filter(e => e.id !== id) }
+          if (p.id === projectId) {
+            return {
+              ...p,
+              events: (p.events || []).map(e => {
+                if (e.id !== id) return e
+                if (e.externalId) return { ...e, syncStatus: 'pending_delete' as any, updatedAt: Date.now() }
+                return null
+              }).filter(Boolean) as any[]
+            }
+          }
           if (p.subprojects) return { ...p, subprojects: updateProjectsRecursive(p.subprojects) }
           return p
         })

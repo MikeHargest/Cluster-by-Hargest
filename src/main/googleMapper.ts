@@ -30,7 +30,10 @@ export function googleToClusterEvent(
   
   if (gEvent.start?.dateTime) {
     const d = new Date(gEvent.start.dateTime)
-    date = d.toISOString().split('T')[0]
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    date = `${year}-${month}-${day}`
     time = d.toTimeString().substring(0, 5) // HH:mm
   } else if (gEvent.start?.date) {
     date = gEvent.start.date

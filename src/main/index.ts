@@ -1954,6 +1954,15 @@ ipcMain.on('create-mini-window', (_, timerId: string) => {
   })
 
   miniWindows[timerId] = miniWin
+  
+  // Set maximum level 'screen-saver' with high relative level (2) immediately to ensure it overrides normal windows
+  miniWin.setAlwaysOnTop(true, 'screen-saver', 2)
+  miniWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+
+  // Re-apply immediately when loading URL
+  miniWin.webContents.on('did-start-navigation', () => {
+    miniWin.setAlwaysOnTop(true, 'screen-saver', 2)
+  })
 
   // Route event back to main window when mini-window closes (unpin)
   miniWin.on('closed', () => {
@@ -1977,6 +1986,14 @@ ipcMain.on('close-mini-window', (_, timerId: string) => {
     const win = miniWindows[timerId]
     delete miniWindows[timerId] // remove reference immediately
     win.destroy() // forcefully destroy to avoid React rendering callbacks during close
+  }
+  // Show and focus the main window
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.moveTop()
+    mainWindow.focus()
+    app.focus({ steal: true })
   }
 })
 
@@ -2193,6 +2210,7 @@ const authFlowClient = new google.auth.OAuth2(
 ipcMain.handle('google:auth', async () => {
   return new Promise((resolve) => {
     const scopes = [
+      'https://www.googleapis.com/auth/calendar',
       'https://www.googleapis.com/auth/calendar.events',
       'https://www.googleapis.com/auth/calendar.readonly'
     ]

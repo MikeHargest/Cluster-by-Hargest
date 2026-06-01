@@ -2172,7 +2172,6 @@ export default function NotesView({
           width: '100%',
           overflow: 'hidden',
           padding: 0,
-          background: 'var(--card-bg)',
           ['--note-project-accent' as any]: activeNoteProjectColor
         }}
       >

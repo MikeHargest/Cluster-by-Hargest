@@ -43,6 +43,28 @@ interface LeftSidebarProps {
   showColoredDots: boolean
 }
 
+const isEventInPast = (event: AppEvent): boolean => {
+  if (!event.date) return false
+
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const day = String(today.getDate()).padStart(2, '0')
+  const todayStr = `${year}-${month}-${day}`
+
+  if (event.date < todayStr) return true
+  if (event.date > todayStr) return false
+
+  // event.date === todayStr
+  if (!event.time) return false // No time set, assume today's event is active/upcoming
+
+  const hours = String(today.getHours()).padStart(2, '0')
+  const minutes = String(today.getMinutes()).padStart(2, '0')
+  const timeStr = `${hours}:${minutes}`
+
+  return event.time < timeStr
+}
+
 const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) => {
   const {
     projects = [],
@@ -67,6 +89,7 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
     anchorRect: DOMRect
   } | null>(null)
   const [isArchiveView, setIsArchiveView] = useState(false)
+  const [isEventsArchiveView, setIsEventsArchiveView] = useState(false)
 
   // Section expansion states
   const [isProjectsExpanded, setIsProjectsExpanded] = useState(true)
@@ -316,16 +339,27 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
   }
   const onUpdateEvent = (projectId: string, eventId: string, updates: Partial<AppEvent>) => {
     // @ts-ignore
-    setProjects(projects.map(p => p.id === projectId ? { ...p, events: (p.events || []).map(e => e.id === eventId ? { ...e, ...updates } : e) } : p))
+    setProjects(projects.map(p => p.id === projectId ? { ...p, events: (p.events || []).map(e => e.id === eventId ? { ...e, ...updates, syncStatus: 'pending_push', updatedAt: Date.now() } : e) } : p))
   }
   const onAddEvent = (projectId: string, title: string) => {
-    const newEvent: AppEvent = { id: Date.now().toString(), title }
+    const newEvent: AppEvent = { id: Date.now().toString(), title, syncStatus: 'pending_push' as any, updatedAt: Date.now() }
     // @ts-ignore
     setProjects(projects.map(p => p.id === projectId ? { ...p, events: [...(p.events || []), newEvent] } : p))
   }
   const onDeleteEvent = (projectId: string, eventId: string) => {
     // @ts-ignore
-    setProjects(projects.map(p => p.id === projectId ? { ...p, events: (p.events || []).filter(e => e.id !== eventId) } : p))
+    setProjects(projects.map(p => {
+      if (p.id !== projectId) return p
+      const events = (p.events || []).map(e => {
+        if (e.id !== eventId) return e
+        // If synced with Google, mark for deletion so sync manager can remove it remotely
+        if (e.externalId) {
+          return { ...e, syncStatus: 'pending_delete', updatedAt: Date.now() }
+        }
+        return null // Not synced — remove immediately
+      }).filter(Boolean) as AppEvent[]
+      return { ...p, events }
+    }))
   }
 
   const onClearArchive = (projectId: string) => {
@@ -1064,7 +1098,7 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
               {isEventsExpanded && selectedProject && (
                 <div className="events-list custom-scrollbar" style={{ flex: 1, padding: '0 12px 12px 12px', overflowY: 'auto' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {selectedProject.events?.map((event) => (
+                    {selectedProject.events?.filter(e => e.syncStatus !== 'pending_delete').map((event) => (
                       <EventItem
                         key={event.id}
                         selectedProjectId={selectedProject.id}
