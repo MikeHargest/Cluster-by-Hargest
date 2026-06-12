@@ -29,6 +29,8 @@ interface SettingsModalProps {
   setDisableBoardBackups: (val: boolean) => void
   boardAutosaveIntervalMinutes: number
   setBoardAutosaveIntervalMinutes: (val: number) => void
+  useExcalidrawBoards: boolean
+  setUseExcalidrawBoards: (val: boolean) => void
   calendarTimezone: string
   setCalendarTimezone: (tz: string) => void
   // Profile props
@@ -64,6 +66,8 @@ export default function SettingsModal({
   setDisableBoardBackups,
   boardAutosaveIntervalMinutes,
   setBoardAutosaveIntervalMinutes,
+  useExcalidrawBoards,
+  setUseExcalidrawBoards,
   calendarTimezone,
   setCalendarTimezone,
   workspacePath,
@@ -729,6 +733,58 @@ export default function SettingsModal({
                     </div>
 
                     <div style={{ padding: '1px 0', background: 'rgba(255,255,255,0.05)' }} />
+
+                    <div style={{
+                      background: '#1a1a1a',
+                      padding: '16px',
+                      borderRadius: 'var(--radius-lg)',
+                      border: '1px solid rgba(255,255,255,0.05)'
+                    }}>
+                      <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        Движок досок
+                      </h4>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => setUseExcalidrawBoards(!useExcalidrawBoards)}
+                      >
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: 500 }}>
+                            Использовать Excalidraw
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            Новые доски будут создаваться в формате Excalidraw. Доски другого формата будут показываться как несовместимые.
+                          </div>
+                        </div>
+                        <button
+                          style={{
+                            width: '36px',
+                            height: '20px',
+                            borderRadius: '10px',
+                            background: useExcalidrawBoards ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
+                            border: 'none',
+                            position: 'relative',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <motion.div
+                            animate={{ x: useExcalidrawBoards ? 16 : 2 }}
+                            style={{
+                              width: '14px',
+                              height: '14px',
+                              background: '#fff',
+                              borderRadius: '50%',
+                              position: 'absolute',
+                              top: '3px'
+                            }}
+                          />
+                        </button>
+                      </div>
+                    </div>
 
                     <div style={{
                       background: '#1a1a1a',

@@ -98,6 +98,7 @@ body {
   border-radius: 0;
   padding: 0;
   gap: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .app-body {
@@ -280,7 +281,7 @@ body {
 
 .window-controls-group {
   display: flex;
-  gap: 8px;
+  gap: 9px;
   align-items: center;
   padding: 4px;
 }
@@ -324,6 +325,7 @@ body {
 
 .window-control-btn:hover {
   filter: brightness(0.9);
+  transform: scale(1.2);
 }
 
 .window-control-btn:active {
@@ -384,7 +386,7 @@ body {
 .tab-bar-tabs {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -401,11 +403,11 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 12px;
-  height: 24px;
+  padding: 0 8px 0 10px;
+  height: 28px;
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 20px;
+  border-radius: 12px;
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 12px;
@@ -444,7 +446,8 @@ body {
   width: 16px;
   height: 16px;
   border-radius: 4px;
-  opacity: 0;
+  opacity: 0.3;
+  overflow: hidden;
   transition: all 0.15s;
   flex-shrink: 0;
 }

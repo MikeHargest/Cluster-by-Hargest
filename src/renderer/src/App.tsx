@@ -4,8 +4,7 @@ import {
   PanelRight,
   User,
   X as CloseIcon,
-  MinimizeIcon,
-  MaximizeIcon,
+  Minus,
   Search,
   LayoutDashboard,
   CheckSquare,
@@ -34,7 +33,8 @@ import {
   Save,
   Check,
   Layers,
-  HardDrive
+  HardDrive,
+  Presentation
 } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
 import TimerCard from './components/TimerCard'
@@ -197,6 +197,14 @@ function App() {
       return false
     }
   })
+  const [useExcalidrawBoards, setUseExcalidrawBoards] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cluster-ui-use-excalidraw-boards')
+      return saved ? JSON.parse(saved) : false
+    } catch {
+      return false
+    }
+  })
   const [calendarTimezone, setCalendarTimezone] = useState(() => {
     try { return Intl.DateTimeFormat().resolvedOptions().timeZone } catch { return 'UTC' }
   })
@@ -210,6 +218,7 @@ function App() {
   const [notesSaveStatus, setNotesSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved')
   const [notesSidebarOpen, setNotesSidebarOpen] = useState(true)
   const [notesActiveNoteType, setNotesActiveNoteType] = useState<'markdown' | 'board' | null>(null)
+  const [_notesShowTrash, setNotesShowTrash] = useState(false)
   const notesHistoryBtnRef = useRef<HTMLButtonElement>(null)
   const notesBoardVersionsBtnRef = useRef<HTMLButtonElement>(null)
 
@@ -403,6 +412,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('cluster-ui-disable-board-backups', JSON.stringify(disableBoardBackups))
   }, [disableBoardBackups])
+
+  useEffect(() => {
+    localStorage.setItem('cluster-ui-use-excalidraw-boards', JSON.stringify(useExcalidrawBoards))
+  }, [useExcalidrawBoards])
 
   const allProjects = useMemo((): Project[] => {
     const flat: Project[] = []
@@ -660,6 +673,8 @@ function App() {
           setBoardAutosaveIntervalMinutes(workspaceData.boardAutosaveIntervalMinutes)
         if (workspaceData.boardBackupIntervalMinutes !== undefined)
           setBoardBackupIntervalMinutes(workspaceData.boardBackupIntervalMinutes)
+        if (workspaceData.useExcalidrawBoards !== undefined)
+          setUseExcalidrawBoards(workspaceData.useExcalidrawBoards)
         if (workspaceData.showColoredDots !== undefined)
           setShowColoredDots(workspaceData.showColoredDots)
 
@@ -912,7 +927,7 @@ function App() {
                 return {
                   ...p,
                   events: p.events.map(ev =>
-                    ev.id === realEventId ? { ...ev, syncStatus: 'pending_delete', updatedAt: Date.now() } : ev
+                    ev.id === realEventId ? { ...ev, syncStatus: 'pending_delete' as const, updatedAt: Date.now() } : ev
                   ).filter(ev => ev.syncStatus === 'pending_delete' ? !!ev.externalId : true)
                 }
               } else {
@@ -1133,6 +1148,7 @@ function App() {
         backupIntervalMinutes,
         boardAutosaveIntervalMinutes,
         boardBackupIntervalMinutes,
+        useExcalidrawBoards,
         showColoredDots,
         isCleanedV1: true // Mark as clean
       }
@@ -1159,6 +1175,7 @@ function App() {
     backupIntervalMinutes,
     boardAutosaveIntervalMinutes,
     boardBackupIntervalMinutes,
+    useExcalidrawBoards,
     showColoredDots,
     isLoadingWorkspace
   ])
@@ -1190,19 +1207,19 @@ function App() {
     window.api.setStoreValue('is-always-on-top', isAlwaysOnTop)
   }, [currentView, selectedProjectId, activeNoteId, isSidebarOpen, tabs, activeTabId, isAlwaysOnTop, workspacePath, isLoadingWorkspace])
 
-  const addTimer = () => {
+  const addTimer = (isStopwatch: boolean = false) => {
     setTimers((prev) => [
       ...prev,
       {
         id: uuidv4(),
-        title: `Timer ${prev.length + 1}`,
+        title: isStopwatch ? `Stopwatch ${prev.length + 1}` : `Timer ${prev.length + 1}`,
         taskName: null,
         hours: 0,
-        minutes: 5,
+        minutes: isStopwatch ? 0 : 5,
         seconds: 0,
         soundPath: null,
         soundName: null,
-        isStopwatch: false
+        isStopwatch
       }
     ])
   }
@@ -1660,7 +1677,7 @@ function App() {
                   className={`app-tab ${activeTabId === tab.id ? 'active' : ''}`}
                   onClick={() => switchTab(tab.id)}
                 >
-                  <Icon size={12} style={{ marginRight: '6px', opacity: 0.8, color: iconColor }} />
+                  <Icon size={14} style={{ opacity: 0.8, color: iconColor, flexShrink: 0 }} />
                   <span className="app-tab-label">{tabLabel}</span>
                   {tabs.length > 1 && (
                     <span
@@ -1702,9 +1719,14 @@ function App() {
           </button>
 
           <div className="window-controls-group">
-            <button className="window-control-btn minimize" onClick={() => (window as any).api.minimizeWindow()} title="Minimize"><MinimizeIcon size={8} strokeWidth={4} /></button>
-            <button className="window-control-btn maximize" onClick={() => (window as any).api.maximizeWindow()} title="Maximize"><MaximizeIcon size={8} strokeWidth={4} /></button>
-            <button className="window-control-btn close" onClick={() => (window as any).api.closeWindow()} title="Close"><CloseIcon size={8} strokeWidth={4} /></button>
+            <button className="window-control-btn minimize" onClick={() => (window as any).api.minimizeWindow()} title="Minimize"><Minus size={8} strokeWidth={3} /></button>
+            <button className="window-control-btn maximize" onClick={() => (window as any).api.maximizeWindow()} title="Maximize">
+              <svg width="8" height="8" viewBox="0 0 12 12" fill="currentColor">
+                <polygon points="2,2 7.5,2 2,7.5" />
+                <polygon points="10,10 4.5,10 10,4.5" />
+              </svg>
+            </button>
+            <button className="window-control-btn close" onClick={() => (window as any).api.closeWindow()} title="Close"><CloseIcon size={8} strokeWidth={3} /></button>
           </div>
         </div>
       </header>
@@ -1739,33 +1761,33 @@ function App() {
           showTaskCounts={showTaskCounts}
           showColoredDots={showColoredDots}
           setIsOpen={setIsSidebarOpen}
+          onTasksClick={() => setCurrentView('tasks')}
+          onCalendarClick={() => {
+            setCurrentView('timeline')
+            setCalendarViewMode('month')
+          }}
+          onClockClick={() => setCurrentView('clock')}
+          timers={timers}
+          onAddTimer={() => addTimer(false)}
+          onAddStopwatch={() => addTimer(true)}
+          onUpdateTimer={(id, updates) => updateTimer(id, updates)}
+          onDeleteTimer={(id) => deleteTimer(id)}
+          timerVolume={timerVolume}
+          theme={theme}
         />
         <div className="main-content">
           <div className="main-toolbar">
             <div className="main-toolbar-left">
               <div className="view-switcher-container">
-                {([
-                  { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
-                  { id: 'pipeline', icon: GitBranch, label: 'Pipeline' },
-                  { id: 'notes', icon: FileTextIcon, label: 'Notes' },
-                  { id: 'separator', icon: null, label: 'separator' },
-                  { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
-                  { id: 'timeline', icon: CalendarIcon, label: 'Calendar' },
-                  { id: 'clock', icon: Clock, label: 'Clock' }
-                ] as const).map((v) => (
-                  v.id === 'separator' ? (
-                    <div key="sep" className="view-switcher-separator" />
-                  ) : (
-                    <button
-                      key={v.id}
-                      className={`view-icon-btn ${currentView === v.id ? 'active' : ''}`}
-                      onClick={() => setCurrentView(v.id as any)}
-                      title={v.label}
-                    >
-                      <v.icon size={18} />
-                    </button>
-                  )
-                ))}
+                {currentView !== 'overview' && (
+                  <button
+                    className={`view-icon-btn`}
+                    onClick={() => setCurrentView('overview')}
+                    title="Overview"
+                  >
+                    <LayoutDashboard size={18} />
+                  </button>
+                )}
               </div>
 
 
@@ -1775,6 +1797,24 @@ function App() {
             <div className="content-toolbar-right">
               {currentView === 'notes' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '2px', marginLeft: 'auto' }}>
+                  {/* New Text Note */}
+                  <button
+                    className="view-icon-btn"
+                    onClick={() => notesToolbarActionsRef.current?.createNote('markdown')}
+                    title="New Text Note"
+                  >
+                    <FileTextIcon size={16} />
+                  </button>
+
+                  {/* New Board */}
+                  <button
+                    className="view-icon-btn"
+                    onClick={() => notesToolbarActionsRef.current?.createNote('board')}
+                    title="New Board"
+                  >
+                    <Presentation size={16} />
+                  </button>
+
                   {/* History — for both note types */}
                   <button
                     ref={notesHistoryBtnRef}
@@ -1861,7 +1901,7 @@ function App() {
 
               {currentView === 'clock' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <button className="toolbar-action-btn" onClick={addTimer}>
+                  <button className="toolbar-action-btn" onClick={() => addTimer(false)}>
                     <PlusCircle size={14} /> Timer
                   </button>
                   <button className="toolbar-action-btn" onClick={addStopwatch}>
@@ -2216,7 +2256,6 @@ function App() {
             <div style={{ display: currentView === 'overview' ? 'contents' : 'none' }}>
               {selectedProject ? (
                 <ProjectOverview
-                  key={selectedProject.id}
                   project={selectedProject}
                   allProjects={allProjects}
                   onUpdate={updateProject}
@@ -2227,6 +2266,7 @@ function App() {
                   }}
                   onProjectClick={(projectId) => setSelectedProjectId(projectId)}
                   onNavigateToPipeline={() => setCurrentView('pipeline')}
+                  onNavigateToNotes={() => setCurrentView('notes')}
                   isRepositioning={isRepositioning}
                   setIsRepositioning={setIsRepositioning}
                 />
@@ -2311,9 +2351,11 @@ function App() {
                 boardAutosaveIntervalMinutes={boardAutosaveIntervalMinutes}
                 boardBackupIntervalMinutes={boardBackupIntervalMinutes}
                 disableBoardBackups={disableBoardBackups}
+                useExcalidrawBoards={useExcalidrawBoards}
                 onSaveStatusChange={setNotesSaveStatus}
                 onSidebarChange={setNotesSidebarOpen}
                 onActiveNoteTypeChange={setNotesActiveNoteType}
+                onShowTrashChange={setNotesShowTrash}
                 notesToolbarActionsRef={notesToolbarActionsRef}
               />
             </div>
@@ -2418,6 +2460,8 @@ function App() {
         setBoardBackupIntervalMinutes={setBoardBackupIntervalMinutes}
         disableBoardBackups={disableBoardBackups}
         setDisableBoardBackups={setDisableBoardBackups}
+        useExcalidrawBoards={useExcalidrawBoards}
+        setUseExcalidrawBoards={setUseExcalidrawBoards}
         boardAutosaveIntervalMinutes={boardAutosaveIntervalMinutes}
         setBoardAutosaveIntervalMinutes={setBoardAutosaveIntervalMinutes}
         calendarTimezone={calendarTimezone}

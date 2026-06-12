@@ -36,6 +36,39 @@ export interface ProjectAttachment {
   type: 'file' | 'link' | 'folder'
 }
 
+export interface AppEvent {
+  id: string
+  title: string
+  date?: string // YYYY-MM-DD
+  time?: string // HH:MM
+  location?: string
+  description?: string
+  color?: string
+  projectId?: string
+  // Sync metadata
+  externalId?: string
+  etag?: string
+  syncStatus?: 'synced' | 'pending_push' | 'pending_delete' | 'conflict'
+  updatedAt?: number
+  // Recurrence
+  recurrence?: {
+    frequency: 'daily' | 'weekly' | 'monthly' | 'yearly'
+    interval?: number
+    daysOfWeek?: number[]
+    endType?: 'never' | 'count' | 'until'
+    count?: number
+    endDate?: string
+  }
+  originalEventId?: string // For recurring event exceptions
+  originalDate?: string    // The original date of a moved recurring instance
+  exceptions?: Record<string, { deleted?: boolean; editedEventId?: string }> // date → exception info
+  // Reminder
+  reminder?: {
+    minutesBefore: number
+    isNotified: boolean
+  }
+}
+
 export interface Project {
   id: string
   name: string
@@ -117,6 +150,27 @@ export interface AppNote {
   order?: number
 }
 
+export interface AppFile {
+  id: string
+  name: string
+  path: string
+  size: number
+  lastModified: number
+  extension: string
+  source: string
+}
+
+export interface AppNotification {
+  id: string
+  title: string
+  message: string
+  type?: 'info' | 'success' | 'warning' | 'error' | 'reminder' | 'timer' | 'system'
+  timestamp: number
+  read?: boolean
+  isRead?: boolean
+  relatedId?: string
+}
+
 export interface UITheme {
   bgColor: string
   cardBg: string
@@ -129,73 +183,20 @@ export interface UITheme {
   timerBg?: string
 }
 
-export interface ThemePreset {
-  id: string
-  name: string
-  theme: UITheme
-}
-
-export interface AppEvent {
-  id: string
-  title: string
-  date?: string // YYYY-MM-DD
-  time?: string // HH:MM
-  location?: string
-  recurrence?: {
-    frequency: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom'
-    interval: number
-    daysOfWeek?: number[] // 0-6 for Sunday-Saturday
-    endType: 'never' | 'until' | 'count'
-    endDate?: string
-    count?: number
-  }
-  exceptions?: {
-    [dateStr: string]: {
-      deleted?: boolean
-      editedEventId?: string // Link to an exceptions AppEvent
-    }
-  } // date string to exception rules
-  originalEventId?: string // If this is an exception event
-  originalDate?: string // What date this exception event was originally for
-  reminder?: {
-    minutesBefore: number // 0, 5, 15, 30, 60, etc.
-    isNotified?: boolean
-  }
-  // Sync Fields
-  externalId?: string // Link to external calendar event ID (e.g., Google Calendar)
-  etag?: string // Server revision tracking
-  syncStatus?: string // 'synced' | 'pending_push' | 'pending_delete' | 'conflict'
-  updatedAt?: number // Timestamp of last local change
-}
-
-export interface AppNotification {
-  id: string
-  type: 'reminder' | 'timer' | 'system'
-  title: string
-  message: string
-  timestamp: number
-  isRead: boolean
-  relatedId?: string // eventId, timerId, etc.
-}
-
 export const DEFAULT_THEME: UITheme = {
-  bgColor: '#333333',
-  cardBg: '#121212',
-  accent: '#525252',
-  textPrimary: '#EAEAEA',
-  boardAccent: '#71717a',
-  boardBg: '#1b1b1b',
+  bgColor: '#1B1B1B',
+  cardBg: '#242424',
+  accent: '#7C6AFA',
+  textPrimary: '#FFFFFF',
+  boardAccent: '#7C6AFA',
+  boardBg: '#1B1B1B',
   calendarTaskBg: '#2a2a2a',
   calendarEventBg: 'rgba(255,255,255,0.03)',
   timerBg: '#171717'
 }
 
-export interface AppFile {
+export interface ThemePreset {
   id: string
   name: string
-  path: string
-  size: number
-  lastModified: number
-  extension: string
-  source: string
+  theme: UITheme
 }

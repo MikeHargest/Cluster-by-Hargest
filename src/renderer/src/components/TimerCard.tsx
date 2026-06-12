@@ -9,8 +9,9 @@ interface TimerCardProps {
   timerVolume: number
   onUpdate: (updates: Partial<TimerData>) => void
   onDelete: () => void
+  isCompact?: boolean
 }
-export default function TimerCard({ data, onUpdate, onDelete, theme, isActiveView, timerVolume }: TimerCardProps) {
+export default function TimerCard({ data, onUpdate, onDelete, theme, isActiveView, timerVolume, isCompact }: TimerCardProps) {
   const [timeLeft, setTimeLeft] = useState(0)
   const [isRunning, setIsRunning] = useState(false)
   const [isFinished, setIsFinished] = useState(false)
@@ -287,15 +288,17 @@ export default function TimerCard({ data, onUpdate, onDelete, theme, isActiveVie
   return (
     <div
       className={`timer-card ${isFinished ? 'finished' : ''} ${isPinned ? 'pinned' : ''}`}
+      style={isCompact ? { height: 'auto', flexShrink: 0, padding: '12px', minHeight: 'auto', gap: '8px', transform: 'none' } : undefined}
       data-timer-id={data.id}
       onDragOver={isPinned ? undefined : handleDragOver}
       onDragLeave={isPinned ? undefined : handleDragLeave}
       onDrop={isPinned ? undefined : handleDrop}
     >
-      <div className="timer-header">
+      <div className="timer-header" style={isCompact ? { marginBottom: 0 } : undefined}>
         <input
           type="text"
           className="timer-title"
+          style={isCompact ? { fontSize: '12px', padding: '2px 4px' } : undefined}
           value={data.title}
           onChange={(e) => onUpdate({ title: e.target.value })}
           placeholder="Timer name"
@@ -316,13 +319,15 @@ export default function TimerCard({ data, onUpdate, onDelete, theme, isActiveVie
             </button>
           )}
 
-          <button
-            className={`timer-pin ${isSettingsOpen ? 'active' : ''}`}
-            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-            title="Timer Settings"
-          >
-            <Settings size={16} />
-          </button>
+          {!isCompact && (
+            <button
+              className={`timer-pin ${isSettingsOpen ? 'active' : ''}`}
+              onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+              title="Timer Settings"
+            >
+              <Settings size={16} />
+            </button>
+          )}
 
           <button className="timer-delete" onClick={onDelete} title="Delete timer">
             <X size={16} />
@@ -334,152 +339,142 @@ export default function TimerCard({ data, onUpdate, onDelete, theme, isActiveVie
         style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: '16px',
+          gap: isCompact ? '8px' : '16px',
           flex: 1,
           opacity: (isSettingsOpen || isPinned) ? 0 : 1,
           pointerEvents: (isSettingsOpen || isPinned) ? 'none' : 'auto',
           transition: 'opacity 0.2s ease'
         }}
       >
-        <div
-          className={`timer-task-container ${isDragOver ? 'drag-over' : ''} ${data.taskName ? 'has-task' : ''}`}
-        >
-          {data.taskName ? (
-            <>
-              <span className="timer-task-text" title={data.taskName}>
-                {data.taskName}
-              </span>
-              <button className="timer-task-clear" onClick={clearTask} title="Clear task">
-                <X size={14} />
-              </button>
-            </>
-          ) : (
-            <span>Drag task here</span>
-          )}
-        </div>
-
-        {!hasStarted && !isFinished && !data.isStopwatch ? (
-          <div className="timer-display">
-            <div className="time-input-group">
-              <input
-                type="number"
-                className="time-input"
-                min="0"
-                max="99"
-                value={data.hours}
-                onChange={(e) => onUpdate({ hours: Math.max(0, parseInt(e.target.value) || 0) })}
-              />
-              <div className="spin-buttons">
-                <button
-                  className="spin-btn"
-                  onClick={() => onUpdate({ hours: Math.min(99, data.hours + 1) })}
-                >
-                  <ChevronUp size={10} />
+        {(!isCompact || data.taskName) && (
+          <div
+            className={`timer-task-container ${isDragOver ? 'drag-over' : ''} ${data.taskName ? 'has-task' : ''}`}
+            style={isCompact ? { padding: '4px 8px', minHeight: 'auto', fontSize: '11px' } : undefined}
+          >
+            {data.taskName ? (
+              <>
+                <span className="timer-task-text" title={data.taskName}>
+                  {data.taskName}
+                </span>
+                <button className="timer-task-clear" onClick={clearTask} title="Clear task">
+                  <X size={14} />
                 </button>
-                <button
-                  className="spin-btn"
-                  onClick={() => onUpdate({ hours: Math.max(0, data.hours - 1) })}
-                >
-                  <ChevronDown size={10} />
-                </button>
-              </div>
-              <span className="time-label">Hr</span>
-            </div>
-            <span className="time-separator">:</span>
-            <div className="time-input-group">
-              <input
-                type="number"
-                className="time-input"
-                min="0"
-                max="59"
-                value={data.minutes}
-                onChange={(e) =>
-                  onUpdate({ minutes: Math.max(0, Math.min(59, parseInt(e.target.value) || 0)) })
-                }
-              />
-              <div className="spin-buttons">
-                <button
-                  className="spin-btn"
-                  onClick={() => onUpdate({ minutes: Math.min(59, data.minutes + 1) })}
-                >
-                  <ChevronUp size={10} />
-                </button>
-                <button
-                  className="spin-btn"
-                  onClick={() => onUpdate({ minutes: Math.max(0, data.minutes - 1) })}
-                >
-                  <ChevronDown size={10} />
-                </button>
-              </div>
-              <span className="time-label">Min</span>
-            </div>
-            <span className="time-separator">:</span>
-            <div className="time-input-group">
-              <input
-                type="number"
-                className="time-input"
-                min="0"
-                max="59"
-                value={data.seconds}
-                onChange={(e) =>
-                  onUpdate({ seconds: Math.max(0, Math.min(59, parseInt(e.target.value) || 0)) })
-                }
-              />
-              <div className="spin-buttons">
-                <button
-                  className="spin-btn"
-                  onClick={() => onUpdate({ seconds: Math.min(59, data.seconds + 1) })}
-                >
-                  <ChevronUp size={10} />
-                </button>
-                <button
-                  className="spin-btn"
-                  onClick={() => onUpdate({ seconds: Math.max(0, data.seconds - 1) })}
-                >
-                  <ChevronDown size={10} />
-                </button>
-              </div>
-              <span className="time-label">Sec</span>
-            </div>
-          </div>
-        ) : (
-          <div className="timer-display" style={{ fontSize: '48px', fontWeight: 'bold' }}>
-            {displayHours > 0 ? `${pad(displayHours)}:` : ''}
-            {pad(displayMinutes)}:{pad(displaySeconds)}
+              </>
+            ) : (
+              <span>Drag task here</span>
+            )}
           </div>
         )}
 
-        <div className="bottom-controls" style={{ justifyContent: 'center' }}>
-          <div
-            className="timer-controls"
-            style={{ margin: '0 auto', width: '100%', justifyContent: 'center' }}
-          >
-            {isFinished ? (
-              <button className="control-btn finished-stop-btn" onClick={handleReset}>
-                <Square size={16} fill="currentColor" /> Stop
-              </button>
-            ) : (
-              <>
-                {!isRunning ? (
-                  <button
-                    className="control-btn btn-play"
-                    onClick={handleStart}
-                    disabled={getTotalSeconds() === 0 && !data.isStopwatch}
-                    style={{ opacity: getTotalSeconds() === 0 && !data.isStopwatch ? 0.3 : 1 }}
-                    title="Start"
-                  >
-                    <Play />
-                  </button>
-                ) : (
-                  <button className="control-btn btn-pause" onClick={handlePause}>
-                    <Pause />
-                  </button>
+        <div style={isCompact ? { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '-4px' } : undefined}>
+          {!hasStarted && !isFinished && !data.isStopwatch ? (
+            <div className="timer-display" style={isCompact ? { gap: '2px', margin: 0, flex: 1, padding: 0, justifyContent: 'flex-start', alignItems: 'center' } : undefined}>
+              <div className="time-input-group" style={isCompact ? { padding: 0, display: 'flex', alignItems: 'center' } : undefined}>
+                <input
+                  type="number"
+                  className="time-input"
+                  style={isCompact ? { fontSize: '18px', width: '28px', padding: 0, margin: 0, height: '24px', lineHeight: '24px', textAlign: 'center' } : undefined}
+                  min="0"
+                  max="99"
+                  value={data.hours}
+                  onChange={(e) => onUpdate({ hours: Math.max(0, parseInt(e.target.value) || 0) })}
+                />
+                {!isCompact && (
+                  <>
+                    <div className="spin-buttons">
+                      <button className="spin-btn" onClick={() => onUpdate({ hours: Math.min(99, data.hours + 1) })}><ChevronUp size={10} /></button>
+                      <button className="spin-btn" onClick={() => onUpdate({ hours: Math.max(0, data.hours - 1) })}><ChevronDown size={10} /></button>
+                    </div>
+                    <span className="time-label">Hr</span>
+                  </>
                 )}
-                <button className="control-btn btn-reset" onClick={handleReset} title="Reset">
-                  <Square size={14} />
+              </div>
+              <span className="time-separator" style={isCompact ? { margin: '0 2px', fontSize: '18px', lineHeight: '24px', display: 'flex', alignItems: 'center', transform: 'translateY(-2px)' } : undefined}>:</span>
+              <div className="time-input-group" style={isCompact ? { padding: 0, display: 'flex', alignItems: 'center' } : undefined}>
+                <input
+                  type="number"
+                  className="time-input"
+                  style={isCompact ? { fontSize: '18px', width: '28px', padding: 0, margin: 0, height: '24px', lineHeight: '24px', textAlign: 'center' } : undefined}
+                  min="0"
+                  max="59"
+                  value={data.minutes}
+                  onChange={(e) =>
+                    onUpdate({ minutes: Math.max(0, Math.min(59, parseInt(e.target.value) || 0)) })
+                  }
+                />
+                {!isCompact && (
+                  <>
+                    <div className="spin-buttons">
+                      <button className="spin-btn" onClick={() => onUpdate({ minutes: Math.min(59, data.minutes + 1) })}><ChevronUp size={10} /></button>
+                      <button className="spin-btn" onClick={() => onUpdate({ minutes: Math.max(0, data.minutes - 1) })}><ChevronDown size={10} /></button>
+                    </div>
+                    <span className="time-label">Min</span>
+                  </>
+                )}
+              </div>
+              <span className="time-separator" style={isCompact ? { margin: '0 2px', fontSize: '18px', lineHeight: '24px', display: 'flex', alignItems: 'center', transform: 'translateY(-2px)' } : undefined}>:</span>
+              <div className="time-input-group" style={isCompact ? { padding: 0, display: 'flex', alignItems: 'center' } : undefined}>
+                <input
+                  type="number"
+                  className="time-input"
+                  style={isCompact ? { fontSize: '18px', width: '28px', padding: 0, margin: 0, height: '24px', lineHeight: '24px', textAlign: 'center' } : undefined}
+                  min="0"
+                  max="59"
+                  value={data.seconds}
+                  onChange={(e) =>
+                    onUpdate({ seconds: Math.max(0, Math.min(59, parseInt(e.target.value) || 0)) })
+                  }
+                />
+                {!isCompact && (
+                  <>
+                    <div className="spin-buttons">
+                      <button className="spin-btn" onClick={() => onUpdate({ seconds: Math.min(59, data.seconds + 1) })}><ChevronUp size={10} /></button>
+                      <button className="spin-btn" onClick={() => onUpdate({ seconds: Math.max(0, data.seconds - 1) })}><ChevronDown size={10} /></button>
+                    </div>
+                    <span className="time-label">Sec</span>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="timer-display" style={{ fontSize: isCompact ? '24px' : '48px', fontWeight: 'bold', margin: isCompact ? 0 : undefined, flex: isCompact ? 1 : undefined, padding: isCompact ? 0 : undefined, justifyContent: isCompact ? 'flex-start' : 'center' }}>
+              {displayHours > 0 ? `${pad(displayHours)}:` : ''}
+              {pad(displayMinutes)}:{pad(displaySeconds)}
+            </div>
+          )}
+
+          <div className="bottom-controls" style={{ justifyContent: isCompact ? 'flex-end' : 'center', marginTop: isCompact ? 0 : undefined }}>
+            <div
+              className="timer-controls"
+              style={{ margin: isCompact ? 0 : '0 auto', width: isCompact ? 'auto' : '100%', justifyContent: isCompact ? 'flex-end' : 'center', gap: isCompact ? '4px' : '12px' }}
+            >
+              {isFinished ? (
+                <button className="control-btn finished-stop-btn" onClick={handleReset} style={isCompact ? { padding: '4px 8px', fontSize: '12px' } : undefined}>
+                  <Square size={isCompact ? 12 : 16} fill="currentColor" /> Stop
                 </button>
-              </>
-            )}
+              ) : (
+                <>
+                  {!isRunning ? (
+                    <button
+                      className="control-btn btn-play"
+                      onClick={handleStart}
+                      disabled={getTotalSeconds() === 0 && !data.isStopwatch}
+                      style={{ opacity: getTotalSeconds() === 0 && !data.isStopwatch ? 0.3 : 1, width: isCompact ? '28px' : '48px', height: isCompact ? '28px' : '48px' }}
+                      title="Start"
+                    >
+                      <Play size={isCompact ? 14 : 20} />
+                    </button>
+                  ) : (
+                    <button className="control-btn btn-pause" onClick={handlePause} style={{ width: isCompact ? '28px' : '48px', height: isCompact ? '28px' : '48px' }}>
+                      <Pause size={isCompact ? 14 : 20} />
+                    </button>
+                  )}
+                  <button className="control-btn btn-reset" onClick={handleReset} title="Reset" style={{ width: isCompact ? '28px' : '48px', height: isCompact ? '28px' : '48px' }}>
+                    <Square size={isCompact ? 12 : 14} />
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>

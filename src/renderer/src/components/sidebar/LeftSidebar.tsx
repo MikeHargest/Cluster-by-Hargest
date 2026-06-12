@@ -1,4 +1,4 @@
-import { forwardRef, useState, useEffect, useRef } from 'react'
+import { forwardRef, useState, useEffect, useRef, useCallback } from 'react'
 import {
   Plus,
   CheckSquare,
@@ -15,6 +15,8 @@ import ProjectItem from './subcomponents/ProjectItem'
 import TaskTree from './subcomponents/TaskTree'
 import EventItem from './subcomponents/EventItem'
 import ColorPicker from '../ColorPicker'
+import TimerCard from '../TimerCard'
+import type { TimerData, UITheme } from '../../types'
 import {
   removeTaskFromTree,
   removeTaskFromProjects,
@@ -41,6 +43,16 @@ interface LeftSidebarProps {
   setIsOpen: (open: boolean) => void
   showTaskCounts: boolean
   showColoredDots: boolean
+  onTasksClick?: () => void
+  onCalendarClick?: () => void
+  onClockClick?: () => void
+  timers?: TimerData[]
+  onAddTimer?: () => void
+  onAddStopwatch?: () => void
+  onUpdateTimer?: (id: string, updates: Partial<TimerData>) => void
+  onDeleteTimer?: (id: string) => void
+  timerVolume?: number
+  theme?: UITheme
 }
 
 
@@ -55,8 +67,19 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
     onTaskAdded,
     onTaskDeleted,
     isOpen,
+    setIsOpen,
     showTaskCounts,
-    showColoredDots
+    showColoredDots,
+    onTasksClick,
+    onCalendarClick,
+    onClockClick,
+    timers = [],
+    onAddTimer,
+    onAddStopwatch,
+    onUpdateTimer,
+    onDeleteTimer,
+    timerVolume = 1,
+    theme
   } = props
 
   // Local state for editing
@@ -73,15 +96,44 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
   const [isProjectsExpanded, setIsProjectsExpanded] = useState(true)
   const [isTasksExpanded, setIsTasksExpanded] = useState(true)
   const [isEventsExpanded, setIsEventsExpanded] = useState(true)
+  const [isClockExpanded, setIsClockExpanded] = useState(false)
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null)
 
   // Resizer states
   const [tasksHeight, setTasksHeight] = useState(250)
   const [eventsHeight, setEventsHeight] = useState(200)
+  const [clockHeight, setClockHeight] = useState(200)
   const [isResizingTasks, setIsResizingTasks] = useState(false)
   const [isResizingEvents, setIsResizingEvents] = useState(false)
+  const [isResizingClock, setIsResizingClock] = useState(false)
   const [resizeStartY, setResizeStartY] = useState(0)
   const [resizeStartHeight, setResizeStartHeight] = useState(250)
+
+  const originalExpansionStatesRef = useRef<Record<string, boolean>>({})
+  const hasSavedStatesRef = useRef(false)
+
+  // Recursive functions to get/set expansion states
+  const getExpansionStates = useCallback((list: Project[]): Record<string, boolean> => {
+    const states: Record<string, boolean> = {}
+    const traverse = (projects: Project[]) => {
+      for (const p of projects) {
+        states[p.id] = p.isExpanded
+        if (p.subprojects) traverse(p.subprojects)
+      }
+    }
+    traverse(list)
+    return states
+  }, [])
+
+  const setExpansionStates = useCallback((list: Project[], states: Record<string, boolean>): Project[] => {
+    return list.map(p => {
+      const updated: Project = { ...p, isExpanded: states[p.id] ?? p.isExpanded }
+      if (p.subprojects) {
+        updated.subprojects = setExpansionStates(p.subprojects, states)
+      }
+      return updated
+    })
+  }, [])
 
   const [isInitialLoading, setIsInitialLoading] = useState(true)
 
@@ -175,11 +227,11 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
 
   // Resizing logic
   useEffect(() => {
-    if (!isResizingTasks && !isResizingEvents) return
+    if (!isResizingTasks && !isResizingEvents && !isResizingClock) return
     const handleMouseMove = (e: MouseEvent): void => {
       const deltaY = resizeStartY - e.clientY
-      const newHeight = resizeStartHeight + deltaY
       if (isResizingTasks) {
+        const newHeight = resizeStartHeight + deltaY
         if (newHeight < 60) {
           if (isTasksExpanded) setIsTasksExpanded(false)
           setTasksHeight(0)
@@ -188,18 +240,17 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
           setTasksHeight(Math.max(100, Math.min(newHeight, window.innerHeight * 0.8)))
         }
       } else if (isResizingEvents) {
-        if (newHeight < 60) {
-          if (isEventsExpanded) setIsEventsExpanded(false)
-          setEventsHeight(0)
-        } else {
-          if (!isEventsExpanded && newHeight > 80) setIsEventsExpanded(true)
-          setEventsHeight(Math.max(100, Math.min(newHeight, window.innerHeight * 0.8)))
-        }
+        const newHeight = Math.max(40, resizeStartHeight + deltaY)
+        setEventsHeight(newHeight)
+      } else if (isResizingClock) {
+        const newHeight = Math.max(40, resizeStartHeight + deltaY)
+        setClockHeight(newHeight)
       }
     }
     const handleMouseUp = (): void => {
       setIsResizingTasks(false)
       setIsResizingEvents(false)
+      setIsResizingClock(false)
     }
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
@@ -207,7 +258,7 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isResizingTasks, isResizingEvents, resizeStartY, resizeStartHeight, isTasksExpanded, isEventsExpanded])
+  }, [isResizingTasks, isResizingEvents, isResizingClock, resizeStartY, resizeStartHeight, isTasksExpanded])
 
   // Auto-collapse projects
   useEffect(() => {
@@ -215,20 +266,40 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
     const sidebarHeight = sidebarRef.current.clientHeight
     const tasksH = isTasksExpanded ? tasksHeight : 40
     const eventsH = isEventsExpanded ? eventsHeight : 40
-    const remainingForProjects = sidebarHeight - tasksH - eventsH
+    const clockH = isClockExpanded ? clockHeight : 40
+    const remainingForProjects = sidebarHeight - tasksH - eventsH - clockH
     if (remainingForProjects < 100 && isProjectsExpanded) setIsProjectsExpanded(false)
     else if (remainingForProjects > 150 && !isProjectsExpanded && isOpen) setIsProjectsExpanded(true)
-  }, [tasksHeight, eventsHeight, isTasksExpanded, isEventsExpanded, isProjectsExpanded, isOpen])
+  }, [tasksHeight, eventsHeight, clockHeight, isTasksExpanded, isEventsExpanded, isClockExpanded, isProjectsExpanded, isOpen])
 
   // Horizontal collapse sync
   useEffect(() => {
     if (!isOpen) {
+      if (!hasSavedStatesRef.current) {
+        // Save original expansion states only once when closing
+        const states = getExpansionStates(projects)
+        originalExpansionStatesRef.current = states
+        hasSavedStatesRef.current = true
+        // Collapse all projects
+        const collapsedStates: Record<string, boolean> = {}
+        for (const id in states) {
+          collapsedStates[id] = false
+        }
+        setProjects(setExpansionStates(projects, collapsedStates))
+      }
       setIsTasksExpanded(false)
       setIsEventsExpanded(false)
-      // Note: We no longer force isProjectsExpanded to false here
-      // to allow the compact project list to show in collapsed mode.
+      setIsClockExpanded(false)
+    } else {
+      if (hasSavedStatesRef.current) {
+        // Restore original expansion states when opening
+        if (Object.keys(originalExpansionStatesRef.current).length > 0) {
+          setProjects(setExpansionStates(projects, originalExpansionStatesRef.current))
+        }
+        hasSavedStatesRef.current = false
+      }
     }
-  }, [isOpen])
+  }, [isOpen, projects, getExpansionStates, setExpansionStates, setProjects])
 
   // Handlers
   const onUpdateProject = (id: string, updates: Partial<Project>) => {
@@ -663,11 +734,11 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
                     </button>
                     <button
                       className="premium-sidebar-btn"
-                      onClick={() => props.setIsOpen(!isOpen)}
+                      onClick={() => setIsOpen(!isOpen)}
                       title="Collapse sidebar"
                       style={{
-                        width: '28px',
-                        height: '28px',
+                        width: '32px',
+                        height: '32px',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -679,14 +750,14 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
                         padding: 0
                       }}
                     >
-                      <PanelLeftClose size={16} />
+                      <PanelLeft size={18} />
                     </button>
                   </div>
                 </div>
               ) : (
                 <button
                   className="sidebar-header-icon premium-sidebar-btn"
-                  onClick={() => props.setIsOpen(!isOpen)}
+                  onClick={() => setIsOpen(!isOpen)}
                   title="Expand sidebar"
                   style={{
                     display: 'flex',
@@ -699,7 +770,7 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
                     borderRadius: '6px',
                     color: 'var(--text-secondary)',
                     cursor: 'pointer',
-                    opacity: 0.8
+                    padding: 0
                   }}
                 >
                   <PanelLeft size={18} />
@@ -771,7 +842,7 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
             )}
           </div>
 
-          {/* --- BOTTOM ANCHORED AREA (Tasks and Events) --- */}
+          {/* --- BOTTOM ANCHORED AREA (Tasks, Events and Clock) --- */}
           <div className="sidebar-bottom-area" style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'var(--card-bg)' }}>
             {/* --- TASKS SECTION --- */}
             <div
@@ -790,7 +861,19 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
                 {isOpen ? (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '0 16px', height: '100%' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <h3>{isArchiveView ? 'Archive' : 'Tasks'}</h3>
+                      <h3
+                        onClick={(e) => { e.stopPropagation(); onTasksClick?.(); }}
+                        className="premium-sidebar-btn"
+                        style={{ 
+                          cursor: 'pointer',
+                          padding: '4px 8px',
+                          margin: '0',
+                          marginLeft: '-8px',
+                          borderRadius: '6px'
+                        }}
+                      >
+                        {isArchiveView ? 'Archive' : 'Tasks'}
+                      </h3>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <button
@@ -888,7 +971,7 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
                     </div>
                   </div>
                 ) : (
-                  <div className="sidebar-header-icon" title={isArchiveView ? 'Archive' : 'Tasks'} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', color: 'var(--text-secondary)', opacity: 0.8 }}>
+                  <div className="sidebar-header-icon premium-sidebar-btn" onClick={(e) => { e.stopPropagation(); onTasksClick?.(); }} title={isArchiveView ? 'Archive' : 'Tasks'} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', background: 'none', border: 'none', borderRadius: '6px', color: 'var(--text-secondary)', opacity: 0.8, cursor: 'pointer', padding: 0 }}>
                     {isArchiveView ? <Archive size={18} /> : <CheckSquare size={18} />}
                   </div>
                 )}
@@ -1020,7 +1103,19 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
                 {isOpen ? (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '0 16px', height: '100%' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <h3>Events</h3>
+                      <h3
+                        onClick={(e) => { e.stopPropagation(); onCalendarClick?.(); }}
+                        className="premium-sidebar-btn"
+                        style={{ 
+                          cursor: 'pointer',
+                          padding: '4px 8px',
+                          margin: '0',
+                          marginLeft: '-8px',
+                          borderRadius: '6px'
+                        }}
+                      >
+                        Calendar
+                      </h3>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <button
@@ -1068,7 +1163,7 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
                     </div>
                   </div>
                 ) : (
-                  <div className="sidebar-header-icon" title="Events" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', color: 'var(--text-secondary)', opacity: 0.8 }}>
+                  <div className="sidebar-header-icon premium-sidebar-btn" onClick={(e) => { e.stopPropagation(); onCalendarClick?.(); }} title="Events" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', background: 'none', border: 'none', borderRadius: '6px', color: 'var(--text-secondary)', opacity: 0.8, cursor: 'pointer', padding: 0 }}>
                     <CalendarIcon size={18} />
                   </div>
                 )}
@@ -1095,6 +1190,88 @@ const LeftSidebar = forwardRef<HTMLDivElement, LeftSidebarProps>((props, _ref) =
                       />
                     ))}
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* --- CLOCK SECTION --- */}
+            <div
+              className={`sidebar-resizer section-divider is-resizable ${isResizingClock ? 'is-resizing' : ''}`}
+              style={{ height: '12px', zIndex: 100 }}
+              onMouseDown={(e) => {
+                if (!isOpen) return;
+                e.preventDefault();
+                setResizeStartY(e.clientY);
+                setResizeStartHeight(isClockExpanded ? clockHeight : 0);
+                setIsResizingClock(true)
+              }}
+            />
+            <div className="sidebar-block" style={{ height: isClockExpanded ? `${clockHeight}px` : '40px', display: 'flex', flexDirection: 'column', transition: (isResizingClock || isInitialLoading) ? 'none' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', overflow: 'hidden', flexShrink: 0 }}>
+              <div className="sidebar-section-header" style={{ height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                {isOpen ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '0 16px', height: '100%' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <h3
+                        onClick={(e) => { e.stopPropagation(); onClockClick?.(); }}
+                        className="premium-sidebar-btn"
+                        style={{ cursor: 'pointer', padding: '4px 8px', margin: '0', marginLeft: '-8px', borderRadius: '6px' }}
+                      >
+                        Clock
+                      </h3>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onAddTimer?.() }}
+                        className="event-add-btn premium-sidebar-btn"
+                        title="Add Timer"
+                        disabled={!isClockExpanded}
+                        style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', borderRadius: '6px', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0 }}
+                      >
+                        <Plus size={14} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onAddStopwatch?.() }}
+                        className="event-add-btn premium-sidebar-btn"
+                        title="Add Stopwatch"
+                        disabled={!isClockExpanded}
+                        style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', borderRadius: '6px', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0 }}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3L2 6"/><path d="m22 6-3-3"/><path d="M6.38 18.7 4 21"/><path d="M17.64 18.67 20 21"/></svg>
+                      </button>
+                      <button
+                        onClick={() => setIsClockExpanded(!isClockExpanded)}
+                        className="section-collapse-btn premium-sidebar-btn"
+                        style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', borderRadius: '6px', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0 }}
+                      >
+                        <ChevronDown size={14} style={{ transform: isClockExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="sidebar-header-icon premium-sidebar-btn" onClick={(e) => { e.stopPropagation(); onClockClick?.(); }} title="Clock" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', background: 'none', border: 'none', borderRadius: '6px', color: 'var(--text-secondary)', opacity: 0.8, cursor: 'pointer', padding: 0 }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/></svg>
+                  </div>
+                )}
+              </div>
+              
+              {isOpen && isClockExpanded && (
+                <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 16px 8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {timers.map((timer) => (
+                    <TimerCard
+                      key={timer.id}
+                      data={timer}
+                      theme={theme!}
+                      timerVolume={timerVolume}
+                      onUpdate={(updates) => onUpdateTimer?.(timer.id, updates)}
+                      onDelete={() => onDeleteTimer?.(timer.id)}
+                      isCompact={true}
+                    />
+                  ))}
+                  {timers.length === 0 && (
+                    <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px', opacity: 0.6 }}>
+                      No timers or stopwatches
+                    </div>
+                  )}
                 </div>
               )}
             </div>

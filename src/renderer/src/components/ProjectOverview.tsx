@@ -11,6 +11,11 @@ import { Project, TaskItem, AppNote } from '../types'
 import OverviewEditor from './OverviewEditor'
 
 // --- STYLES ---
+const OVERVIEW_SIDE_WIDTH = 300
+const BANNER_HEIGHT = 280
+const BANNER_ANIM_MS = 450
+const BANNER_SWAP_MS = 240
+
 const containerStyle: React.CSSProperties = {
   flex: 1,
   padding: '0',
@@ -31,13 +36,14 @@ const bannerStyle: React.CSSProperties = {
   height: '280px',
   flexShrink: 0,
   position: 'relative',
-  transition: 'height 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-height 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+  transition: 'height 0.45s cubic-bezier(0.22, 1, 0.36, 1), min-height 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
   overflow: 'hidden',
   borderRadius: 0,
-  margin: 0
+  margin: 0,
+  willChange: 'height, min-height'
 }
 const sidebarStyle: React.CSSProperties = {
-  width: '280px',
+  width: OVERVIEW_SIDE_WIDTH,
   padding: '16px 24px',
   display: 'flex',
   flexDirection: 'column',
@@ -95,11 +101,6 @@ const iconBoxStyle: React.CSSProperties = {
   transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
 }
 
-const subprojectsGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-  gap: '16px'
-}
 const noteCardStyle: React.CSSProperties = {
   background: '#171717',
   border: '1px solid rgba(255,255,255,0.04)',
@@ -405,11 +406,16 @@ export default function ProjectOverview({
   onProjectClick,
   onNavigateToPipeline,
   isRepositioning = false,
-  setIsRepositioning = () => {}
+  setIsRepositioning = () => { }
 }: ProjectOverviewProps): React.ReactElement | null {
   const [isEditingName, setIsEditingName] = useState(false)
   const [nameValue, setNameValue] = useState(project.name || '')
   const [showIconPicker, setShowIconPicker] = useState(false)
+
+  const bannerImageRef = useRef<string | null>(project.banner || null)
+  const [bannerImage, setBannerImage] = useState<string | null>(project.banner || null)
+  const [isBannerImageVisible, setIsBannerImageVisible] = useState(!!project.banner)
+  const [isBannerAreaVisible, setIsBannerAreaVisible] = useState(!project.bannerCollapsed && !!project.banner)
 
   const [tempPosition, setTempPosition] = useState(project.bannerPosition ?? 50)
   const [isDragging, setIsDragging] = useState(false)
@@ -421,8 +427,75 @@ export default function ProjectOverview({
   }, [project.name, project.id])
 
   useEffect(() => {
+    setIsEditingName(false)
+    setShowIconPicker(false)
+    setIsDragging(false)
+    setIsRepositioning(false)
+  }, [project.id, setIsRepositioning])
+
+  useEffect(() => {
     setTempPosition(project.bannerPosition ?? 50)
   }, [project.bannerPosition, project.id])
+
+  useEffect(() => {
+    const next = project.banner || null
+    const current = bannerImageRef.current
+
+    if (project.bannerCollapsed) {
+      setIsBannerImageVisible(false)
+      setIsBannerAreaVisible(false)
+      const t = setTimeout(() => {
+        bannerImageRef.current = null
+        setBannerImage(null)
+      }, BANNER_ANIM_MS)
+      return () => clearTimeout(t)
+    }
+
+    if (!next) {
+      setIsBannerImageVisible(false)
+      setIsBannerAreaVisible(false)
+      const t = setTimeout(() => {
+        bannerImageRef.current = null
+        setBannerImage(null)
+      }, BANNER_ANIM_MS)
+      return () => clearTimeout(t)
+    }
+
+    setIsBannerAreaVisible(true)
+
+    if (current && current !== next) {
+      setIsBannerImageVisible(false)
+      let cancelled = false
+
+      const img = new Image()
+      img.onload = () => {
+        if (cancelled) return
+        bannerImageRef.current = next
+        setBannerImage(next)
+        requestAnimationFrame(() => setIsBannerImageVisible(true))
+      }
+      img.onerror = () => {
+        if (cancelled) return
+        bannerImageRef.current = next
+        setBannerImage(next)
+        requestAnimationFrame(() => setIsBannerImageVisible(true))
+      }
+
+      const t = setTimeout(() => {
+        img.src = next
+      }, BANNER_SWAP_MS)
+
+      return () => {
+        cancelled = true
+        clearTimeout(t)
+      }
+    }
+
+    bannerImageRef.current = next
+    setBannerImage(next)
+    requestAnimationFrame(() => setIsBannerImageVisible(true))
+    return undefined
+  }, [project.banner, project.bannerCollapsed, project.id])
 
   const stats = useMemo(() => {
     let total = 0
@@ -555,18 +628,30 @@ export default function ProjectOverview({
             onMouseLeave={handleBannerMouseUp}
             style={{
               ...bannerStyle,
-              height: project.bannerCollapsed || !project.banner ? '0px' : '280px',
-              minHeight: project.bannerCollapsed || !project.banner ? '0px' : '280px',
+              height: isBannerAreaVisible ? `${BANNER_HEIGHT}px` : '0px',
+              minHeight: isBannerAreaVisible ? `${BANNER_HEIGHT}px` : '0px',
               cursor: isRepositioning ? 'ns-resize' : 'default',
               userSelect: 'none',
-              background: project.banner
-                ? `url("${project.banner}")`
-                : `linear-gradient(135deg, ${project.color || 'var(--accent)'}, var(--bg-surface))`,
-              backgroundSize: 'cover',
-              backgroundPosition: `50% ${tempPosition}%`,
-              backgroundRepeat: 'no-repeat'
+              background: `linear-gradient(135deg, ${project.color || 'var(--accent)'}, var(--bg-surface))`
             }}
           >
+            {bannerImage && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  backgroundImage: `url("${bannerImage}")`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: `50% ${tempPosition}%`,
+                  backgroundRepeat: 'no-repeat',
+                  opacity: isBannerImageVisible ? 1 : 0,
+                  transition: 'opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
+                  zIndex: 0,
+                  willChange: 'opacity',
+                  pointerEvents: 'none'
+                }}
+              />
+            )}
             {isRepositioning && (
               <div
                 style={{
@@ -855,7 +940,7 @@ export default function ProjectOverview({
               </header>
 
               {/* PROJECT METADATA */}
-              <section style={{ marginBottom: '0', display: 'flex', alignItems: 'center', gap: '8px', padding: '0', flexWrap: 'wrap' }}>
+              <section style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px', padding: '0', flexWrap: 'wrap' }}>
                 <CustomSelect
                   icon={<LucideIcons.Clock size={14} />}
                   label="Status"
@@ -895,9 +980,6 @@ export default function ProjectOverview({
                 />
               </section>
 
-              <hr style={{ ...mainDividerStyle, marginTop: '16px', marginBottom: '24px' }} />
-              {/* ── конец исправления ── */}
-
               {project.path && (
                 <section>
                   <OverviewEditor
@@ -910,12 +992,12 @@ export default function ProjectOverview({
             </main>
           </div>
 
-          <div style={{ padding: '0 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '0' }}>
+          <hr style={{ ...mainDividerStyle, margin: '0 0 24px 0' }} />
+          <div style={{ padding: '0 0 24px 0', display: 'flex', flexDirection: 'row', gap: 0 }}>
 
             {/* --- SUBPROJECTS --- */}
             {((project.subprojects && project.subprojects.length > 0) || parentProject) && (
-              <section style={{ padding: '0 0 24px 0' }}>
-                <hr style={{ ...mainDividerStyle, marginTop: '0', marginBottom: '24px' }} />
+              <section style={{ width: OVERVIEW_SIDE_WIDTH, flexShrink: 0, paddingLeft: '24px', paddingRight: '24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', width: '100%' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <SectionLabel>Subprojects</SectionLabel>
@@ -942,33 +1024,22 @@ export default function ProjectOverview({
                     </span>
                   )}
                 </div>
-                <div style={{ ...subprojectsGridStyle, gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {project.subprojects?.map((sub) => (
                     <div
                       key={sub.id}
-                      style={{ ...noteCardStyle, cursor: onProjectClick ? 'pointer' : 'default', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' }}
+                      style={{ ...noteCardStyle, minHeight: 'auto', cursor: onProjectClick ? 'pointer' : 'default', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' }}
                       onClick={() => onProjectClick?.(sub.id)}
                       onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = (sub.color || 'var(--accent)') + '44' }}
                       onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.background = '#171717'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.04)' }}
                     >
-                      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ color: sub.color || 'var(--text-primary)', display: 'flex' }}>
-                            <ProjectIcon iconName={sub.icon} size={20} />
-                          </div>
-                          <span style={{ ...subprojectTitleStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {sub.name}
-                          </span>
+                      <div style={{ padding: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ color: sub.color || 'var(--text-primary)', display: 'flex' }}>
+                          <ProjectIcon iconName={sub.icon} size={20} />
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{
-                            fontSize: '10px', fontWeight: 700, padding: '4px 8px', borderRadius: '6px',
-                            background: (sub.color || 'var(--accent)') + '15', color: sub.color || 'var(--accent)',
-                            textTransform: 'uppercase', letterSpacing: '0.05em'
-                          }}>
-                            {sub.status || 'Active'}
-                          </span>
-                        </div>
+                        <span style={{ ...subprojectTitleStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {sub.name}
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -976,15 +1047,29 @@ export default function ProjectOverview({
               </section>
             )}
 
+            {((project.subprojects && project.subprojects.length > 0) || parentProject) && (
+              null
+            )}
+
             {/* --- PROJECT NOTES --- */}
-            <section style={{ padding: '0 0 24px 0' }}>
-              <hr style={{ ...mainDividerStyle, marginTop: '0', marginBottom: '24px' }} />
+            <section style={{ flex: 1, minWidth: 0, paddingLeft: '32px', paddingRight: '24px' }}>
               <div style={{ marginBottom: '8px' }}>
                 <SectionLabel>Project Notes</SectionLabel>
               </div>
               {(() => {
-                const projectNotes = notes.filter((n) => n.projectId === project.id && !n.isTrash)
-                if (projectNotes.length === 0) {
+                const allProjectNotes = notes.filter((n) => n.projectId === project.id && !n.isTrash)
+                const topLevelNotes = allProjectNotes
+                  .filter((n) => !n.parentId || !allProjectNotes.some(p => p.id === n.parentId))
+                  .sort((a, b) => {
+                    const diff = (a.order ?? 0) - (b.order ?? 0);
+                    if (diff !== 0) return diff;
+                    const aTime = a.createdAt || a.id.charCodeAt(0);
+                    const bTime = b.createdAt || b.id.charCodeAt(0);
+                    if (aTime !== bTime) return aTime - bTime;
+                    return a.id.localeCompare(b.id);
+                  })
+
+                if (topLevelNotes.length === 0) {
                   return (
                     <div style={{
                       padding: '16px', textAlign: 'center', background: 'transparent',
@@ -995,30 +1080,62 @@ export default function ProjectOverview({
                   )
                 }
                 return (
-                  <div style={{ ...subprojectsGridStyle, gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
-                    {projectNotes.map((note) => (
-                      <div
-                        key={note.id}
-                        style={{ ...noteCardStyle, cursor: onNoteClick ? 'pointer' : 'default', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' }}
-                        onClick={() => onNoteClick?.(note.id)}
-                        onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = (project.color || 'var(--accent)') + '44' }}
-                        onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.04)' }}
-                      >
-                        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <div style={{ color: project.color || 'var(--accent)', display: 'flex' }}>
-                              {note.type === 'board' ? <ImageIcon size={20} /> : <FileText size={20} />}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
+                    {topLevelNotes.map((note) => {
+                      const childNotes = allProjectNotes
+                        .filter((n) => n.parentId === note.id)
+                        .sort((a, b) => {
+                          const diff = (a.order ?? 0) - (b.order ?? 0);
+                          if (diff !== 0) return diff;
+                          const aTime = a.createdAt || a.id.charCodeAt(0);
+                          const bTime = b.createdAt || b.id.charCodeAt(0);
+                          if (aTime !== bTime) return aTime - bTime;
+                          return a.id.localeCompare(b.id);
+                        })
+
+                      return (
+                        <div
+                          key={note.id}
+                          style={{ ...noteCardStyle, width: '260px', flexGrow: 0, flexShrink: 0, cursor: onNoteClick ? 'pointer' : 'default', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' }}
+                          onClick={() => onNoteClick?.(note.id)}
+                          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = (project.color || 'var(--accent)') + '44' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.04)' }}
+                        >
+                          <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div style={{ color: project.color || 'var(--accent)', display: 'flex' }}>
+                                {note.type === 'board' ? <ImageIcon size={20} /> : <FileText size={20} />}
+                              </div>
+                              <span style={{ ...subprojectTitleStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {note.title || 'Untitled Note'}
+                              </span>
                             </div>
-                            <span style={{ ...subprojectTitleStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {note.title || 'Untitled Note'}
-                            </span>
-                          </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                            Last modified: {new Date(note.lastModified).toLocaleDateString()}
+                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                              Last modified: {new Date(note.lastModified).toLocaleDateString()}
+                            </div>
+
+                            {childNotes.length > 0 && (
+                              <div style={{ marginTop: 'auto', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {childNotes.map(child => (
+                                  <div
+                                    key={child.id}
+                                    onClick={(e) => { e.stopPropagation(); onNoteClick?.(child.id); }}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)', transition: 'color 0.2s' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+                                  >
+                                    {child.type === 'board' ? <ImageIcon size={12} /> : <FileText size={12} />}
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {child.title || 'Untitled Note'}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )
               })()}

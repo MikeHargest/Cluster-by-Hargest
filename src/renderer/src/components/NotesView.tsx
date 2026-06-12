@@ -44,6 +44,8 @@ import Link from '@tiptap/extension-link'
 import ImageExt from '@tiptap/extension-image'
 import { Virtuoso } from 'react-virtuoso'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Excalidraw } from '@excalidraw/excalidraw'
+import '@excalidraw/excalidraw/index.css'
 
 import Paragraph from '@tiptap/extension-paragraph'
 
@@ -83,6 +85,9 @@ export interface NotesViewHandle {
   getSaveStatus: () => 'saved' | 'saving' | 'unsaved'
   getSidebarOpen: () => boolean
   getActiveNoteType: () => 'markdown' | 'board' | null
+  createNote: (type: 'markdown' | 'board') => void
+  toggleTrash: () => void
+  getShowTrash: () => boolean
 }
 
 interface NotesViewProps {
@@ -101,9 +106,11 @@ interface NotesViewProps {
   boardAutosaveIntervalMinutes?: number
   boardBackupIntervalMinutes?: number
   disableBoardBackups?: boolean
+  useExcalidrawBoards?: boolean
   onSaveStatusChange?: (status: 'saved' | 'saving' | 'unsaved') => void
   onSidebarChange?: (open: boolean) => void
   onActiveNoteTypeChange?: (type: 'markdown' | 'board' | null) => void
+  onShowTrashChange?: (show: boolean) => void
   notesToolbarActionsRef?: React.MutableRefObject<NotesViewHandle | null>
 }
 
@@ -135,6 +142,67 @@ const getFileName = (title: string, id: string, ext: string): string => {
   return `${sanitized}_${shortId}.${ext}`
 }
 
+type BoardEngine = 'pixi' | 'excalidraw'
+
+const detectBoardEngine = (raw: string): BoardEngine => {
+  if (!raw || !raw.trim()) return 'pixi'
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed?.engine === 'excalidraw') return 'excalidraw'
+    if (parsed?.engine === 'pixi') return 'pixi'
+    if (parsed?.excalidraw && typeof parsed.excalidraw === 'object') return 'excalidraw'
+    return 'pixi'
+  } catch {
+    return 'pixi'
+  }
+}
+
+const buildExcalidrawBoardPayload = (args: {
+  id: string
+  title: string
+  projectId: string
+  elements?: unknown[]
+  appState?: Record<string, unknown>
+  files?: Record<string, unknown>
+  boardBg?: string
+}): string => {
+  const {
+    id,
+    title,
+    projectId,
+    elements = [],
+    appState = {},
+    files = {},
+    boardBg
+  } = args
+  const mergedAppState = {
+    ...appState,
+    viewBackgroundColor: (appState as any)?.viewBackgroundColor ?? boardBg ?? '#1B1B1B'
+  }
+  return JSON.stringify({
+    engine: 'excalidraw',
+    excalidraw: { elements, appState: mergedAppState, files },
+    id,
+    title,
+    projectId,
+    type: 'board'
+  })
+}
+
+const parseExcalidrawBoardPayload = (raw: string): { elements: unknown[]; appState: Record<string, unknown>; files: Record<string, unknown> } => {
+  if (!raw || !raw.trim()) return { elements: [], appState: {}, files: {} }
+  try {
+    const parsed = JSON.parse(raw)
+    const ex = parsed?.excalidraw
+    const elements = Array.isArray(ex?.elements) ? ex.elements : []
+    const appState = ex?.appState && typeof ex.appState === 'object' ? ex.appState : {}
+    const files = ex?.files && typeof ex.files === 'object' ? ex.files : {}
+    return { elements, appState, files }
+  } catch {
+    return { elements: [], appState: {}, files: {} }
+  }
+}
+
 export default function NotesView({
   notes,
   setNotes,
@@ -151,9 +219,11 @@ export default function NotesView({
   boardAutosaveIntervalMinutes = 5,
   boardBackupIntervalMinutes = 10,
   disableBoardBackups = false,
+  useExcalidrawBoards = false,
   onSaveStatusChange,
   onSidebarChange,
   onActiveNoteTypeChange,
+  onShowTrashChange,
   notesToolbarActionsRef
 }: NotesViewProps): React.ReactElement {
   const floatingBtnStyle = (active = false): React.CSSProperties => ({
@@ -1459,16 +1529,24 @@ export default function NotesView({
   }, [activeProjectId, showTrash, activeNoteId, filteredNotes, setActiveNoteId])
 
   const handleCreateNote = (type: 'markdown' | 'board' = 'markdown'): void => {
-    let initialContent = ''
-    if (type === 'board') {
-      // Small valid json structure for empty board if needed, otherwise empty string is fine.
-      // We will handle it in the BoardsView component
-      initialContent = ''
-    }
     const noteProjId = activeProjectId
+    const id = uuidv4()
+    const title = type === 'board' ? 'Untitled Board' : 'Untitled Note'
+    const initialContent =
+      type === 'board' && useExcalidrawBoards
+        ? buildExcalidrawBoardPayload({
+            id,
+            title,
+            projectId: noteProjId,
+            elements: [],
+            appState: {},
+            files: {},
+            boardBg: theme?.boardBg
+          })
+        : ''
     const newNote: AppNote = {
-      id: uuidv4(),
-      title: type === 'board' ? 'Untitled Board' : 'Untitled Note',
+      id,
+      title,
       content: initialContent,
       type,
       projectId: noteProjId,
@@ -1492,15 +1570,24 @@ export default function NotesView({
     // Save physical file immediately
     if (targetDir) {
       if (isBoard) {
-        // Initialize empty board in cache and pack to .board ZIP
-        const emptyBoard = JSON.stringify({
-          elements: [],
-          viewport: { x: 0, y: 0, scale: 1 },
-          id: newNote.id,
-          title: newNote.title,
-          projectId: noteProjId,
-          type: 'board'
-        })
+        const emptyBoard = useExcalidrawBoards
+          ? buildExcalidrawBoardPayload({
+              id: newNote.id,
+              title: newNote.title,
+              projectId: noteProjId,
+              elements: [],
+              appState: {},
+              files: {},
+              boardBg: theme?.boardBg
+            })
+          : JSON.stringify({
+              elements: [],
+              viewport: { x: 0, y: 0, scale: 1 },
+              id: newNote.id,
+              title: newNote.title,
+              projectId: noteProjId,
+              type: 'board'
+            })
         // @ts-ignore
         window.api.writeBoardJson(newNote.id, emptyBoard).then((ok) => {
           // @ts-ignore
@@ -2116,6 +2203,7 @@ export default function NotesView({
   useEffect(() => { onSaveStatusChange?.(saveStatus) }, [saveStatus, onSaveStatusChange])
   useEffect(() => { onSidebarChange?.(showSidebar) }, [showSidebar, onSidebarChange])
   useEffect(() => { onActiveNoteTypeChange?.(activeNote?.type ?? null) }, [activeNote?.type, onActiveNoteTypeChange])
+  useEffect(() => { onShowTrashChange?.(showTrash) }, [showTrash, onShowTrashChange])
 
   // Expose toolbar actions to parent via mutable ref
   useEffect(() => {
@@ -2126,6 +2214,9 @@ export default function NotesView({
       getActiveNoteType: () => activeNote?.type ?? null,
       manualSave: handleManualSave,
       toggleSidebar: () => setShowSidebar(prev => !prev),
+      createNote: (type: 'markdown' | 'board') => handleCreateNote(type),
+      toggleTrash: () => setShowTrash(prev => !prev),
+      getShowTrash: () => showTrash,
       openHistory: (rect: DOMRect) => {
         setShowBoardVersionsDropdown(false)
         setBoardVersionsMenuPos(null)
@@ -2432,78 +2523,7 @@ export default function NotesView({
                 height: '100%'
               }}
             >
-              <div
-                style={{
-                  padding: '16px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '12px',
-                  borderBottom: '1px solid rgba(255,255,255,0.05)'
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '8px',
-                    width: '100%'
-                  }}
-                >
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <button
-                      onClick={() => handleCreateNote('markdown')}
-                      className="icon-btn"
-                      title="New Text Note"
-                      style={{
-                        padding: '4px',
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-primary)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
-                    >
-                      <FileText size={16} />
-                    </button>
-                    <button
-                      onClick={() => handleCreateNote('board')}
-                      className="icon-btn"
-                      title="New Board"
-                      style={{
-                        padding: '4px',
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-primary)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
-                    >
-                      <Presentation size={16} />
-                    </button>
-                  </div>
 
-                  <button
-                    onClick={() => setShowTrash(!showTrash)}
-                    style={{
-                      padding: '4px 10px',
-                      borderRadius: 'var(--radius-sm)',
-                      background: showTrash ? '#ef444433' : 'rgba(255,255,255,0.03)',
-                      color: showTrash ? '#ef4444' : 'var(--text-secondary)',
-                      border: showTrash ? '1px solid #ef444455' : '1px solid transparent',
-                      fontSize: '11px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    🗑 Trash
-                  </button>
-                </div>
-              </div>
 
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingTop: '4px' }}>
                 {filteredNotes.length === 0 ? (
@@ -2522,6 +2542,7 @@ export default function NotesView({
                     className="custom-scrollbar"
                     style={{ flex: 1 }}
                     data={flattenedNotesList}
+                    computeItemKey={(_index, item) => item.type === 'project' ? `project-${item.project.id}` : `note-${item.note.id}`}
                     itemContent={(index, item) => {
                       if (item.type === 'project') {
                         const { project, level } = item
@@ -2742,48 +2763,98 @@ export default function NotesView({
                   padding: '10px 12px',
                   borderTop: '1px solid rgba(255,255,255,0.06)',
                   display: 'flex',
-                  gap: '4px',
-                  justifyContent: 'flex-start'
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
                 }}
               >
-                <button
-                  onClick={handleImportFile}
-                  className="icon-btn"
-                  style={{
-                    padding: '4px',
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '24px',
-                    height: '24px'
-                  }}
-                  title="Загрузить текстовый файл как заметку"
-                >
-                  <FileText size={14} />
-                </button>
-                <button
-                  onClick={handleImportBoard}
-                  className="icon-btn"
-                  style={{
-                    padding: '4px',
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '24px',
-                    height: '24px'
-                  }}
-                  title="Загрузить файл доски (.board/.ibo/.zip)"
-                >
-                  <Presentation size={14} />
-                </button>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    onClick={handleImportFile}
+                    className="icon-btn"
+                    style={{
+                      padding: '4px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '24px',
+                      height: '24px'
+                    }}
+                    title="Загрузить текстовый файл как заметку"
+                  >
+                    <FileText size={14} />
+                  </button>
+                  <button
+                    onClick={handleImportBoard}
+                    className="icon-btn"
+                    style={{
+                      padding: '4px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '24px',
+                      height: '24px'
+                    }}
+                    title="Загрузить файл доски (.board/.ibo/.zip)"
+                  >
+                    <Presentation size={14} />
+                  </button>
+                </div>
+
+                {/* Mode Switcher (Notes / Trash) Tumbler */}
+                <div style={{
+                  display: 'flex',
+                  background: 'rgba(0,0,0,0.2)',
+                  borderRadius: '8px',
+                  padding: '2px',
+                  border: '1px solid rgba(255,255,255,0.05)'
+                }}>
+                  <button
+                    onClick={() => setShowTrash(false)}
+                    style={{
+                      background: !showTrash ? 'rgba(255,255,255,0.1)' : 'transparent',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '4px 12px',
+                      color: !showTrash ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: !showTrash ? '0 1px 3px rgba(0,0,0,0.2)' : 'none'
+                    }}
+                    title="Заметки"
+                  >
+                    <FileText size={14} />
+                  </button>
+                  <button
+                    onClick={() => setShowTrash(true)}
+                    style={{
+                      background: showTrash ? 'rgba(255,255,255,0.1)' : 'transparent',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '4px 12px',
+                      color: showTrash ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: showTrash ? '0 1px 3px rgba(0,0,0,0.2)' : 'none'
+                    }}
+                    title="Корзина"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -2802,67 +2873,7 @@ export default function NotesView({
               <>
                 {activeNote.type === 'board' ? (
                   <>
-                    <div
-                      style={{
-                        padding: '0 10px',
-                        borderBottom: '1px solid rgba(255,255,255,0.05)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        background: 'transparent',
-                        height: '45px',
-                        boxSizing: 'border-box',
-                        gap: '8px'
-                      }}
-                    >
-                      <button
-                        onClick={() => setCurrentView('overview')}
-                        title="Back to Project"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--text-secondary)',
-                          cursor: 'pointer',
-                          padding: '4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderRadius: 'var(--radius-sm)',
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
-                          e.currentTarget.style.color = 'var(--text-primary)'
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'transparent'
-                          e.currentTarget.style.color = 'var(--text-secondary)'
-                        }}
-                      >
-                        <ArrowLeft size={18} />
-                      </button>
-                      <input
-                        type="text"
-                        value={localTitle}
-                        onChange={(e) => handleTitleChange(e.target.value)}
-                        onBlur={handleTitleBlur}
-                        onKeyDown={(e) => { if (e.key === 'Enter') (e.currentTarget as any).blur() }}
-                        onFocus={() => setIsEditingTitle(true)}
-                        readOnly={!isEditingTitle}
-                        placeholder="Board Title"
-                        style={{
-                          flex: 1,
-                          fontSize: '14px',
-                          fontWeight: 400,
-                          background: isEditingTitle ? 'rgba(255,255,255,0.03)' : 'transparent',
-                          border: 'none',
-                          color: 'var(--text-primary)',
-                          outline: 'none',
-                          padding: '4px 8px',
-                          borderRadius: '4px',
-                          cursor: isEditingTitle ? 'text' : 'pointer'
-                        }}
-                      />
+
                       {/* History dropdown portal (trigger moved to App toolbar) */}
                       {showHistoryDropdown && boardHistoryMenuPos && (
                           <div data-history-menu-root="true" style={{
@@ -3038,7 +3049,6 @@ export default function NotesView({
                             )}
                           </div>
                         )}
-                    </div>
                     <div
                       style={{
                         flex: 1,
@@ -3050,18 +3060,94 @@ export default function NotesView({
                         position: 'relative'
                       }}
                     >
-                      <BoardsView
-                        key={activeNote.id}
-                        boardData={boardContent[activeNote.id] ?? activeNote.content}
-                        onChange={handleBoardChange}
-                        theme={theme}
-                        setTheme={setTheme}
-                        showFPS={showFPS}
-                        isSidebarOpen={showSidebar}
-                        boardId={activeNote.id}
-                        boardDir={getBoardTargetDir(activeNote.projectId, activeNote.isTrash)}
-                        boardFileName={activeNote.fileName || getFileName(activeNote.title, activeNote.id, 'board')}
-                      />
+                      {(() => {
+                        const rawBoardData = boardContent[activeNote.id] ?? activeNote.content
+                        const engine = detectBoardEngine(rawBoardData)
+                        const expectedEngine: BoardEngine = useExcalidrawBoards ? 'excalidraw' : 'pixi'
+                        const isCompatible = engine === expectedEngine
+                        const boardBg = theme?.boardBg
+
+                        if (!isCompatible) {
+                          return (
+                            <div
+                              style={{
+                                flex: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: '24px',
+                                background: boardBg || 'var(--board-bg)'
+                              }}
+                            >
+                              <div
+                                style={{
+                                  maxWidth: '560px',
+                                  width: '100%',
+                                  background: 'rgba(0,0,0,0.35)',
+                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  borderRadius: '14px',
+                                  padding: '18px 16px',
+                                  color: 'var(--text-primary)'
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                  <Presentation size={18} style={{ opacity: 0.8 }} />
+                                  <div style={{ fontSize: '14px', fontWeight: 700 }}>Доска несовместима с текущими настройками</div>
+                                </div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                                  {engine === 'excalidraw'
+                                    ? 'Эта доска создана в формате Excalidraw. Чтобы открыть её, включите «Использовать Excalidraw» в настройках (Canvas → Движок досок).'
+                                    : 'Эта доска создана в старом формате. Сейчас включён режим Excalidraw — отключите «Использовать Excalidraw» в настройках (Canvas → Движок досок), чтобы открыть старые доски.'}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        }
+
+                        if (engine === 'excalidraw') {
+                          const initial = parseExcalidrawBoardPayload(rawBoardData)
+                          return (
+                            <div style={{ flex: 1, height: '100%', width: '100%', background: boardBg || 'var(--board-bg)' }}>
+                              <Excalidraw
+                                key={activeNote.id}
+                                theme="dark"
+                                initialData={{
+                                  elements: initial.elements as any,
+                                  appState: initial.appState as any,
+                                  files: initial.files as any
+                                }}
+                                onChange={(elements: any, appState: any, files: any) => {
+                                  const payload = buildExcalidrawBoardPayload({
+                                    id: activeNote.id,
+                                    title: activeNote.title,
+                                    projectId: activeNote.projectId || activeProjectId,
+                                    elements: Array.isArray(elements) ? elements : [],
+                                    appState: (appState && typeof appState === 'object') ? appState : {},
+                                    files: (files && typeof files === 'object') ? files : {},
+                                    boardBg
+                                  })
+                                  handleBoardChange(payload)
+                                }}
+                              />
+                            </div>
+                          )
+                        }
+
+                        return (
+                          <BoardsView
+                            key={activeNote.id}
+                            boardData={rawBoardData}
+                            onChange={handleBoardChange}
+                            theme={theme}
+                            setTheme={setTheme}
+                            showFPS={showFPS}
+                            isSidebarOpen={showSidebar}
+                            boardId={activeNote.id}
+                            boardDir={getBoardTargetDir(activeNote.projectId, activeNote.isTrash)}
+                            boardFileName={activeNote.fileName || getFileName(activeNote.title, activeNote.id, 'board')}
+                          />
+                        )
+                      })()}
                     </div>
                   </>
                 ) : (
@@ -3102,36 +3188,6 @@ export default function NotesView({
                               flex: 1
                             }}
                           >
-                            <button
-                              onClick={() => setCurrentView('overview')}
-                              title="Back to Project"
-                              style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: 'var(--text-secondary)',
-                                cursor: 'pointer',
-                                padding: '4px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                borderRadius: 'var(--radius-sm)',
-                                transition: 'all 0.2s',
-                                opacity: 0.6
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
-                                e.currentTarget.style.color = 'var(--text-primary)'
-                                e.currentTarget.style.opacity = '1'
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background = 'transparent'
-                                e.currentTarget.style.color = 'var(--text-secondary)'
-                                e.currentTarget.style.opacity = '0.6'
-                              }}
-                            >
-                              <ArrowLeft size={16} />
-                            </button>
-
                             {breadcrumbs.map((crumb) => (
                               <React.Fragment key={crumb.id}>
                                 <button
